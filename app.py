@@ -43,16 +43,15 @@ CLASS_NAMES = ["Normal", "Pneumonia"] # index 0 = Normal, 1 = Pneumonia
 NORMAL_IDX = 0
 PNEUMONIA_IDX = 1
 
-# --- HARDCODED DARK THEME COLORS ---
-BG_COLOR = "#0D1117"     # Dark Background
-CARD_BG_COLOR = "#161B22" # Card Background
-ACCENT_COLOR = "#58A6FF"   # Primary Blue Accent
-TEXT_COLOR = "#C9D1D9"    # Light Text Color
-SUCCESS_COLOR = "#00FF7F"  # Green for Normal
-FAILURE_COLOR = "#FF4500"  # Red for Pneumonia
+# --- HARDCODED FUTURISTIC DARK THEME COLORS ---
+BG_COLOR = "#0A101A"     # Deep Dark Background
+CARD_BG_COLOR = "#1B2A3A" # Dark Card Background (Blue-Grey)
+ACCENT_COLOR = "#4DEEEA"   # Cyan/Aqua Accent for glow
+TEXT_COLOR = "#E0FFFF"    # Off-White/Cyan Text
+SUCCESS_COLOR = "#00FF7F"  # Bright Green for Normal
+FAILURE_COLOR = "#FF6347"  # Tomato Red for Pneumonia
 
 # -------------------- SESSION STATE INIT -----------------
-# Removed 'theme' state as it is now hardcoded to dark
 if "history" not in st.session_state:
     st.session_state.history = []
 if "last_overlay_b64" not in st.session_state:
@@ -81,48 +80,49 @@ def apply_theme():
             color: {TEXT_COLOR};
         }}
         
-        /* Main Header Neon/Glow Effect */
+        /* Main Header Glow Effect */
         h1.main-header {{
-             text-shadow: 0 0 8px {ACCENT_COLOR}, 0 0 12px rgba(88, 166, 255, 0.4);
+             text-shadow: 0 0 10px {ACCENT_COLOR}, 0 0 20px rgba(77, 238, 234, 0.6);
              text-align: center;
              padding-bottom: 20px;
         }}
         
-        /* Custom Card/Container Style */
+        /* Custom Card/Container Style (Glass/Glow Effect) */
         .stContainer, .stTabs {{
             background-color: {CARD_BG_COLOR};
-            border-radius: 12px;
-            padding: 25px;
-            border: 1px solid rgba(88, 166, 255, 0.2);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            margin-bottom: 20px;
+            border-radius: 16px;
+            padding: 30px;
+            border: 1px solid rgba(77, 238, 234, 0.2);
+            box-shadow: 0 0 15px rgba(77, 238, 234, 0.15); /* Subtle border glow */
+            margin-bottom: 25px;
         }}
         
         /* Result Banners */
         .result-banner {{
-            padding: 15px;
-            border-radius: 8px;
-            font-weight: bold;
+            padding: 18px;
+            border-radius: 10px;
+            font-weight: 700;
             text-align: center;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
+            font-size: 1.1em;
         }}
         .result-normal {{
             background-color: rgba(0, 255, 127, 0.1); 
-            border-left: 5px solid {SUCCESS_COLOR};
+            border-left: 6px solid {SUCCESS_COLOR};
             color: {SUCCESS_COLOR};
         }}
         .result-pneumonia {{
-            background-color: rgba(255, 69, 0, 0.1); 
-            border-left: 5px solid {FAILURE_COLOR};
+            background-color: rgba(255, 99, 71, 0.1); 
+            border-left: 6px solid {FAILURE_COLOR};
             color: {FAILURE_COLOR};
         }}
 
         /* Detailed Probability Box */
         .prob-box {{
-            padding: 10px;
+            padding: 12px;
             border-radius: 8px;
             border: 1px solid {ACCENT_COLOR};
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             font-size: 14px;
             color: {TEXT_COLOR};
         }}
@@ -131,28 +131,35 @@ def apply_theme():
         .responsive-img {{
             max-width: 100%;
             height: auto;
-            border-radius: 8px; 
-            margin-top: 10px;
-            border: 2px solid {ACCENT_COLOR};
-            box-shadow: 0 0 5px rgba(88, 166, 255, 0.5);
+            border-radius: 12px; 
+            margin-top: 15px;
+            border: 3px solid {ACCENT_COLOR};
+            box-shadow: 0 0 8px {ACCENT_COLOR};
         }}
         
         /* Gauge Wrapper */
         .gauge-wrapper {{
             display: flex;
             justify-content: center;
-            margin-top: 10px;
+            margin-top: 15px;
         }}
         
-        /* Button Styling (ensures consistency) */
+        /* Button Styling (High Contrast) */
         .stButton>button {{
             background-color: {ACCENT_COLOR};
             border-color: {ACCENT_COLOR};
-            color: {BG_COLOR}; /* Dark text on bright button */
+            color: {BG_COLOR}; 
+            font-weight: bold;
         }}
         .stButton>button:hover {{
             background-color: #008CBA; 
             border-color: #008CBA;
+        }}
+        
+        /* Metrics for Summary Table */
+        [data-testid="stMetricValue"] {{
+            font-size: 24px;
+            color: {ACCENT_COLOR};
         }}
         
         /* Footer/Disclaimer */
@@ -160,12 +167,9 @@ def apply_theme():
             font-size: 11px;
             opacity: 0.6;
             text-align: center;
-            margin-top: 30px;
-        }}
-        
-        /* Specific fix for Altair tooltips/labels in Streamlit */
-        .stPlotlyChart, .stAltairChart {{
-            color: {TEXT_COLOR} !important;
+            margin-top: 40px;
+            border-top: 1px solid {CARD_BG_COLOR};
+            padding-top: 15px;
         }}
     </style>
     """, unsafe_allow_html=True)
@@ -176,15 +180,13 @@ apply_theme()
 with st.sidebar:
     st.markdown("## ⚙ Settings & Configuration")
     
-    # Removed theme toggle option
-        
     st.markdown("---")
     st.markdown("### Model Behavior")
     
     prediction_threshold = st.slider(
         "Pneumonia Classification Threshold (%)",
         min_value=50, max_value=99, value=80, step=1,
-        help="Confidence level required for the AI to classify the result as PNEUMONIA."
+        help="Confidence level required for the AI to classify the result as PNEUMONIA. Increasing this reduces false positives but may increase false negatives."
     )
     
     enable_gradcam = st.checkbox(
@@ -473,7 +475,7 @@ with tab_single:
                         with col_prob_p:
                              st.markdown(f"<div class='prob-box'>**Pneumonia Probability:** {probs[PNEUMONIA_IDX]*100:.2f}%</div>", unsafe_allow_html=True)
                         
-                        st.info(f"Using threshold: **{prediction_threshold}%**")
+                        st.info(f"Classification threshold applied: **{prediction_threshold}%**")
 
                         style = "result-pneumonia" if label == "Pneumonia" else "result-normal"
                         st.markdown(f"<div class='result-banner {style}'>"
@@ -648,25 +650,42 @@ with tab_analysis:
         df['Confidence_Value'] = df['Confidence'].str.replace('%', '').astype(float)
         df['Index'] = range(len(df)) # Used for Line Chart
 
-        # --- Altair Theme Configuration (Simplified and fixed) ---
-        # The configuration is now handled inside the .configure() calls directly
-        # using Python variables, preventing the SchemaValidationError.
+        # 1. Statistical Summary Table (New)
+        st.subheader("Statistical Summary")
+        stats = {
+            'Metric': ['Total Predictions', 'Mean Confidence', 'Std Dev Confidence', 'Max Confidence'],
+            'Value': [
+                len(df),
+                f"{df['Confidence_Value'].mean():.2f}%",
+                f"{df['Confidence_Value'].std(skipna=True):.2f}%",
+                f"{df['Confidence_Value'].max():.2f}%"
+            ]
+        }
+        stats_df = pd.DataFrame(stats)
+        col_stats, col_gap = st.columns([1, 2])
+        with col_stats:
+            st.table(stats_df.set_index('Metric'))
         
-        # 1. Bar Chart (Total Counts)
-        st.subheader("1. Diagnosis Frequency (Bar Chart)")
-        counts_df = df["Result"].value_counts().reset_index()
-        counts_df.columns = ['Result', 'Count']
+        st.markdown("---")
         
-        chart_bar = alt.Chart(counts_df).mark_bar().encode(
-            x=alt.X('Result', axis=None),
-            y=alt.Y('Count', title='Number of Cases'),
-            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
-            tooltip=['Result', 'Count']
+        # 2. Confidence Density Plot (New - Modern Analysis)
+        st.subheader("Confidence Score Distribution")
+        st.markdown("Visualizes how concentrated the model's confidence scores are.")
+
+        chart_density = alt.Chart(df).transform_density(
+            'Confidence_Value',
+            as_=['Confidence', 'Density'],
+            groupby=['Result']
+        ).mark_area(opacity=0.6, line=True).encode(
+            x=alt.X('Confidence:Q', title='Confidence (%)'),
+            y=alt.Y('Density:Q', title='Density'),
+            color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+            tooltip=['Result', 'Confidence', 'Density']
         ).properties(
-            title='Total Case Counts'
+            title='Confidence Distribution (KDE)'
         ).configure_view(
             strokeOpacity=0,
-            fill=CARD_BG_COLOR # Set background for view
+            fill=CARD_BG_COLOR
         ).configure_title(
             color=TEXT_COLOR
         ).configure_axis(
@@ -676,12 +695,48 @@ with tab_analysis:
             titleColor=TEXT_COLOR,
             labelColor=TEXT_COLOR
         ).interactive()
-        st.altair_chart(chart_bar, use_container_width=True)
+        st.altair_chart(chart_density, use_container_width=True)
 
         st.markdown("---")
 
-        # 2. Pie Chart (Donut Chart for Breakdown)
-        st.subheader("2. Diagnostic Breakdown (Donut Chart)")
+        # 3. Time Series Scatter Plot (New - Trend Analysis)
+        st.subheader("Confidence Trend by Prediction Index")
+        st.markdown("Tracks confidence for each diagnosis over the course of the session.")
+        
+        # Add tooltips for detail on hover
+        tooltip_fields = ['Index', 'Image', 'Result', alt.Tooltip('Confidence_Value', format='.2f')]
+
+        chart_scatter = alt.Chart(df).mark_circle(size=120).encode(
+            x=alt.X('Index', title='Prediction Number', axis=alt.Axis(format='d')),
+            y=alt.Y('Confidence_Value', title='Confidence (%)'),
+            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+            tooltip=tooltip_fields
+        )
+
+        # Add a simple linear trend line for overall confidence (optional)
+        chart_trend = chart_scatter.transform_regression('Index', 'Confidence_Value').mark_line(strokeDash=[5,5], color=ACCENT_COLOR).interactive()
+
+        st.altair_chart((chart_scatter + chart_trend).properties(
+            title='Prediction Confidence Over Time'
+        ).configure_view(
+            strokeOpacity=0,
+            fill=CARD_BG_COLOR
+        ).configure_title(
+            color=TEXT_COLOR
+        ).configure_axis(
+            labelColor=TEXT_COLOR,
+            titleColor=TEXT_COLOR
+        ).configure_legend(
+            titleColor=TEXT_COLOR,
+            labelColor=TEXT_COLOR
+        ), use_container_width=True)
+
+        st.markdown("---")
+
+        # 4. Diagnosis Breakdown (Donut Chart - Retained)
+        st.subheader("Diagnosis Frequency Breakdown")
+        counts_df = df["Result"].value_counts().reset_index()
+        counts_df.columns = ['Result', 'Count']
         counts_df['Percentage'] = (counts_df['Count'] / counts_df['Count'].sum()) * 100
         
         chart_pie = alt.Chart(counts_df).encode(
@@ -694,7 +749,6 @@ with tab_analysis:
              tooltip=['Result', 'Count', alt.Tooltip('Percentage', format='.1f')]
         )
 
-        # Add text labels 
         text = chart_pie.mark_text(radius=140).encode(
             text=alt.Text('Percentage', format='.1f'),
             color=alt.value(TEXT_COLOR) 
@@ -709,32 +763,6 @@ with tab_analysis:
             titleColor=TEXT_COLOR,
             labelColor=TEXT_COLOR
         ), use_container_width=True)
-
-        st.markdown("---")
-
-        # 3. Line Chart (Confidence Trend over Time)
-        st.subheader("3. Confidence Trend Over Time")
-        
-        chart_line = alt.Chart(df).mark_line(point=True).encode(
-            x=alt.X('Index', title='Prediction Number', axis=alt.Axis(format='d')),
-            y=alt.Y('Confidence_Value', title='Confidence (%)'),
-            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
-            tooltip=['Image', 'Result', 'Confidence']
-        ).properties(
-            title='Confidence Level by Prediction Order'
-        ).configure_view(
-            strokeOpacity=0,
-            fill=CARD_BG_COLOR
-        ).configure_title(
-            color=TEXT_COLOR
-        ).configure_axis(
-            labelColor=TEXT_COLOR,
-            titleColor=TEXT_COLOR
-        ).configure_legend(
-            titleColor=TEXT_COLOR,
-            labelColor=TEXT_COLOR
-        ).interactive()
-        st.altair_chart(chart_line, use_container_width=True)
 
 
 # -------------------- FOOTER ----------------------
