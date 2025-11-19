@@ -15,7 +15,6 @@ import streamlit as st
 # TensorFlow / Keras
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-# Use a robust preprocessing function that covers standard inputs
 from tensorflow.keras.applications.efficientnet import preprocess_input 
 
 # Utils
@@ -26,6 +25,10 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email import encoders
 
+# --- Define Base Directory for Robust Path Handling ---
+# This ensures MODEL_PATH is always correct, fixing the previous OSError potential.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
+
 # -------------------- PAGE CONFIG --------------------
 st.set_page_config(
     page_title="Pneumonia Detection AI",
@@ -34,13 +37,14 @@ st.set_page_config(
 )
 
 # -------------------- GLOBALS ------------------------
-MODEL_PATH = "pneumonia_final_Dibyendu.h5"
+MODEL_FILENAME = "pneumonia_final_Dibyendu.h5"
+MODEL_PATH = os.path.join(BASE_DIR, MODEL_FILENAME) # Corrected to use absolute path
 IMAGE_SIZE = (300, 300)
 CLASS_NAMES = ["Normal", "Pneumonia"] # index 0 = Normal, 1 = Pneumonia
 
 # -------------------- SESSION STATE INIT -----------------
 if "theme" not in st.session_state:
-    st.session_state.theme = "dark" # Retain theme state
+    st.session_state.theme = "dark"
 if "history" not in st.session_state:
     st.session_state.history = []
 if "last_overlay_b64" not in st.session_state:
@@ -54,8 +58,6 @@ if "doctor_notes" not in st.session_state:
 if "batch_results" not in st.session_state:
     st.session_state.batch_results = None
     
-# Removed: show_heatmap_modal (simplifying modal handling)
-
 # -------------------- THEME / STYLE (Blue/Grey Futuristic) ------------------
 def apply_theme():
     # Primary theme colors (Futuristic Blue/Grey)
@@ -121,7 +123,7 @@ def apply_theme():
             margin-top: 15px;
         }}
         .img-thumb, .img-thumb-heat {{
-            max-width: 280px;  /* Slightly bigger for better viewing */
+            max-width: 280px;
             width: 100%;
             height: auto;
             border-radius: 8px; 
@@ -159,11 +161,9 @@ apply_theme()
 with st.sidebar:
     st.markdown("## ⚙ Controls")
     
-    # Theme toggle (simplified)
     if st.button("🎨 Toggle Theme (Light/Dark)"):
-        # Note: True Streamlit theming is done via config.toml, but we mimic it here
         st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
-        st.experimental_rerun() # Rerun to apply potential changes (though not strictly necessary for inline CSS changes)
+        st.experimental_rerun()
         
     enable_gradcam = st.checkbox("Grad-CAM heatmap", value=True, help="Explainable AI overlay to show activation regions")
 
@@ -173,34 +173,34 @@ with st.sidebar:
     sender_app_password = st.text_input("Gmail App Password", type="password", help="Use a Gmail App Password, not your regular password.")
     default_recipient = st.text_input("Default Recipient (optional)", placeholder="recipient@example.com")
     st.markdown("---")
-    st.markdown("*Model:* `pneumonia_final_Dibyendu.h5`")
+    st.markdown(f"*Model:* `{MODEL_FILENAME}`")
     st.markdown("*Input:* 300×300 RGB (EfficientNet preprocess)")
 
 
 # -------------------- HELPERS ------------------------
 @st.cache_resource(show_spinner=True)
 def load_model_cached():
-    """Load the Keras model with error handling and warm-up."""
+    """Load the Keras model with error handling and robust path check."""
     if not os.path.exists(MODEL_PATH):
-        st.error(f"Model file not found at: {MODEL_PATH}")
+        # This explicit error will be seen if the file is missing/misnamed in the deployed environment
+        st.error(f"Failed to load model: Model file not found at the expected path: {MODEL_PATH}")
         st.stop()
     
-    # Explicitly compile=False, as we don't need the optimizer for inference
     model = load_model(MODEL_PATH, compile=False) 
-    # Warm-up a dummy forward pass to catch load issues early
+    
+    # Warm-up a dummy forward pass
     try:
         _ = model.predict(np.zeros((1, IMAGE_SIZE[0], IMAGE_SIZE[1], 3), dtype=np.float32), verbose=0)
     except Exception as e:
-         st.error(f"Model warm-up failed. Check model file integrity. Error: {e}")
+         st.error(f"Model warm-up failed. Check model integrity. Error: {e}")
          st.stop()
+         
     return model
 
 def prepare_image(pil_img: Image.Image) -> np.ndarray:
     """Resize -> RGB -> EfficientNet preprocess -> add batch dimension."""
-    # Ensure correct size and color depth
     img = pil_img.convert("RGB").resize(IMAGE_SIZE)
     arr = np.asarray(img, dtype=np.float32)
-    # Apply EfficientNet preprocessing
     arr = preprocess_input(arr)
     return np.expand_dims(arr, axis=0)
 
@@ -212,11 +212,8 @@ def npimg_to_b64(np_img_bgr: np.ndarray) -> str:
 def render_gauge(percent: float, label: str):
     """Draw a clean semicircle gauge using inline SVG."""
     p = max(0, min(100, percent))
-    # Map 0..100 to -90..90 degrees
     angle = -90 + (p * 180.0 / 100.0)
-    
-    # Define colors based on prediction (using a simple threshold for visualization)
-    gauge_color = "#FF4500" if p > 50 else "#00FF7F" # Red for high Pneumonia confidence, Green for Normal
+    gauge_color = "#FF4500" if p > 50 else "#00FF7F" 
     
     st.markdown(f"""
     <div style="text-align:center; margin-top: 10px;">
@@ -233,7 +230,6 @@ def render_gauge(percent: float, label: str):
 
 def generate_pdf_report(image_name: str, result: str, confidence: float, notes: str, heatmap_b64: str | None) -> bytes:
     """Create a PDF report in memory including notes and optional heatmap."""
-    # Note: fpdf requires temporary file access for embedding images from b64 string
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -250,10 +246,10 @@ def generate_pdf_report(image_name: str, result: str, confidence: float, notes: 
     pdf.ln(4)
     
     pdf.set_font("Arial", "I", 11)
-    pdf.set_text_color(150, 150, 150) # Grey disclaimer text
+    pdf.set_text_color(150, 150, 150)
     disclaimer = "Disclaimer: This is an assistive AI tool for educational and research use only. It is NOT a medical diagnosis. Please consult a qualified clinician for interpretation."
     pdf.multi_cell(0, 7, disclaimer)
-    pdf.set_text_color(0, 0, 0) # Reset text color to black
+    pdf.set_text_color(0, 0, 0)
     pdf.ln(4)
     
     pdf.set_font("Arial", "B", 12)
@@ -262,7 +258,6 @@ def generate_pdf_report(image_name: str, result: str, confidence: float, notes: 
     pdf.multi_cell(0, 6, f"{notes if notes else 'N/A'}")
     pdf.ln(3)
 
-    # Embed heatmap if available
     if heatmap_b64:
         temp_file_name = f"temp_gradcam_{os.getpid()}.png"
         try:
@@ -273,17 +268,14 @@ def generate_pdf_report(image_name: str, result: str, confidence: float, notes: 
             pdf.ln(3)
             pdf.set_font("Arial", "B", 12)
             pdf.cell(0, 8, "Grad-CAM Heatmap:", ln=True)
-            # Center the image
             pdf.image(temp_file_name, x=(pdf.w - 120) / 2, w=120) 
             
-        except Exception as e:
-            # st.warning(f"Failed to embed heatmap in PDF: {e}") # Log error but don't stop
+        except Exception:
             pass
         finally:
             if os.path.exists(temp_file_name):
                 os.remove(temp_file_name)
 
-    # Output to memory
     out = pdf.output(dest="S").encode("latin1")
     return out
 
@@ -291,7 +283,6 @@ def find_last_conv_layer(keras_model: tf.keras.Model):
     """Robustly get the last 4D layer (conv/activation) for Grad-CAM."""
     for layer in reversed(keras_model.layers):
         try:
-            # Check if the output shape is 4D (batch, height, width, channels)
             if len(layer.output.shape) == 4:
                 return layer.name
         except Exception:
@@ -303,51 +294,36 @@ def gradcam_overlay(pil_img: Image.Image, model: tf.keras.Model, processed_batch
     layer_name = find_last_conv_layer(model)
     
     if layer_name is None:
-        # Fallback: return the original image as BGR (OpenCV format)
         return np.asarray(pil_img.convert("RGB").resize(IMAGE_SIZE))[:, :, ::-1]
 
-    # 1. Create a model that outputs the activation map and the final prediction
     grad_model = tf.keras.models.Model(
         inputs=model.input,
         outputs=[model.get_layer(layer_name).output, model.output]
     )
 
-    # 2. Compute the gradient of the predicted class with respect to the activation map
     with tf.GradientTape() as tape:
         conv_out, preds = grad_model(processed_batch)
-        # Loss is the output score for the predicted class
         loss = preds[:, target_class_idx] 
 
-    # 3. Get the gradient
     grads = tape.gradient(loss, conv_out)
     if grads is None:
          return np.asarray(pil_img.convert("RGB").resize(IMAGE_SIZE))[:, :, ::-1]
 
-    # 4. Average the gradient over all spatial locations (Global Average Pooling)
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2)) # (C,)
-
-    # 5. Multiply each channel in the activation map by the average gradient (weights)
-    conv_out = conv_out[0] # H x W x C (remove batch dim)
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    conv_out = conv_out[0]
     heatmap = tf.reduce_sum(tf.multiply(pooled_grads, conv_out), axis=-1)
 
-    # 6. Apply ReLU to keep only positive contributions
     heatmap = tf.nn.relu(heatmap)
-    # Normalize to 0-1 range
     denom = tf.reduce_max(heatmap)
     heatmap = heatmap / (denom + 1e-10)
     heatmap = heatmap.numpy()
 
-    # 7. Resize heatmap to original image size
     heatmap = cv2.resize(heatmap, IMAGE_SIZE[::-1])
     heatmap = np.uint8(255 * heatmap)
-    
-    # 8. Apply color map (JET is standard for Grad-CAM)
     heatmap_colored = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 
-    # 9. Overlay the heatmap on the original image
     original_rgb = np.asarray(pil_img.convert("RGB").resize(IMAGE_SIZE))
-    original_bgr = original_rgb[:, :, ::-1] # Convert RGB to BGR for OpenCV blend
-    # Blend the original image (60% weight) with the heatmap (40% weight)
+    original_bgr = original_rgb[:, :, ::-1]
     overlay = cv2.addWeighted(original_bgr, 0.6, heatmap_colored, 0.4, 0)
     
     return overlay
@@ -372,7 +348,6 @@ def send_email_with_attachment(sender_email: str, app_password: str, recipient: 
         msg.attach(part)
 
         context = ssl.create_default_context()
-        # Use a higher timeout for potentially slow SMTP connection
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=10) as server:
             server.login(sender_email, app_password)
             server.send_message(msg)
@@ -404,13 +379,9 @@ with col_left:
     pil_img = None
     if uploaded:
         try:
-            # Read the file
             pil_img = Image.open(uploaded)
-            
-            # Store original as base64 for consistent display sizing
             st.session_state.last_original_b64 = base64.b64encode(uploaded.getvalue()).decode()
             
-            # Display original image
             st.markdown(f"""
                 <div class='img-card'>
                     <h4>Uploaded X-ray: {uploaded.name}</h4>
@@ -429,7 +400,6 @@ with col_right:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("### 🔍 Prediction & Notes")
 
-    # Doctor notes input
     st.session_state.doctor_notes = st.text_area("Doctor notes (optional)", value=st.session_state.doctor_notes, help="These notes will be saved inside the PDF report.")
 
     predict_btn = st.button("Run AI Prediction", use_container_width=True, type="primary")
@@ -440,7 +410,6 @@ if predict_btn:
     if pil_img is None:
         st.warning("Please upload an image first.", icon="⚠️")
     else:
-        # Clear previous prediction data
         st.session_state.last_overlay_b64 = None
         st.session_state.last_pdf_bytes = None
         
@@ -448,7 +417,6 @@ if predict_btn:
             try:
                 # 1. Prediction
                 batch = prepare_image(pil_img)
-                # [Normal, Pneumonia] probabilities
                 probs = model.predict(batch, verbose=0)[0]  
                 
                 top_idx = int(np.argmax(probs))
@@ -456,7 +424,7 @@ if predict_btn:
                 conf = probs[top_idx] * 100.0
 
                 # 2. Show result
-                result_col = col_right.container() # Display results in the right column
+                result_col = col_right.container()
                 style = "result-pneumonia" if label == "Pneumonia" else "result-normal"
                 result_col.markdown(f"<div class='{style}' style='margin-bottom: 10px;'>"
                                     f"{'⚠️' if label=='Pneumonia' else '✅'} **{label}**<br>"
@@ -469,10 +437,8 @@ if predict_btn:
                 if enable_gradcam:
                     try:
                         overlay_bgr = gradcam_overlay(pil_img, model, batch, top_idx)
-                        # Save overlay to session b64
                         st.session_state.last_overlay_b64 = npimg_to_b64(overlay_bgr)
 
-                        # Display Heatmap results in a new section under the prediction
                         col_results_heat, col_results_dl = st.columns([2, 1])
                         
                         with col_results_heat:
@@ -512,7 +478,6 @@ if predict_btn:
                 )
                 st.session_state.last_pdf_bytes = pdf_bytes
                 
-                # Use the right column for the report download button
                 with col_right:
                     st.download_button(
                         "📄 Download PDF Report",
@@ -538,7 +503,7 @@ with colE2:
     subj = st.text_input("Subject", value="Pneumonia AI Report")
 
 with colE3:
-    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True) # Spacer for alignment
+    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
     send_btn = st.button("Send Last Report", use_container_width=True, key="send_email_button")
     
 if send_btn:
@@ -615,7 +580,6 @@ if st.session_state.history:
     st.subheader("Count of Diagnoses")
     st.bar_chart(counts, use_container_width=True)
     
-    # Calculate average confidence
     df['Confidence_Val'] = df['Confidence'].str.replace('%', '').astype(float)
     avg_conf = df['Confidence_Val'].mean()
     st.metric(label="Average Prediction Confidence", value=f"{avg_conf:.2f}%")
