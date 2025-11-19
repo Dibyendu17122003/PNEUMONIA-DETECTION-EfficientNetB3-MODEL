@@ -14,7 +14,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email import encoders
-from datetime import datetime # CRITICAL FIX: Ensure datetime is imported
+from datetime import datetime
 import traceback
 
 # Optional imports for model processing (handled by TF_AVAILABLE check)
@@ -44,25 +44,36 @@ MODEL_PATH = "pneumonia_final_Dibyendu.h5"
 IMAGE_SIZE = (300, 300)
 CLASS_NAMES = ["Normal", "Pneumonia"]
 
-# -------------------- ULTRA-MODERN CSS (RED/CYAN) ----------------
+# -------------------- GLOBAL SCHEMA & CONSTANTS (for logging) ----------------
+LOG_SCHEMA = [
+    'gender', 'SeniorCitizen', 'Partner', 'Dependents', 'tenure', 
+    'PhoneService', 'MultipleLines', 'InternetService', 'OnlineSecurity', 
+    'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV', 
+    'StreamingMovies', 'Contract', 'PaperlessBilling', 'PaymentMethod', 
+    'MonthlyCharges', 'TotalCharges', 'Prediction', 'Probability', 'Timestamp'
+]
+HISTORY_FILE = "prediction_history.csv"
+
+
+# -------------------- SUNSET/ORANGE THEME CSS ----------------
 STYLING = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap');
 
     :root {
-        --bg-deep: #000000;
-        --neon-cyan: #00f3ff;
-        --neon-red: #ff2a6d; /* Diagnostic Danger Red */
-        --neon-green: #05ffa1; /* Safe Green */
-        --glass-bg: rgba(15, 20, 35, 0.85);
-        --glass-border: rgba(255, 255, 255, 0.1);
-        --text-main: #e0f7fa;
+        --bg-deep: #0f0500; /* Near Black/Brown */
+        --neon-accent: #ff8c00; /* Dark Orange/Sunset */
+        --neon-danger: #ff4500; /* Fiery Red Orange */
+        --neon-safe: #32cd32; /* Lime Green */
+        --glass-bg: rgba(25, 10, 0, 0.85); /* Dark transparent brown */
+        --glass-border: rgba(255, 140, 0, 0.15);
+        --text-main: #fff8e1; /* Off-White/Cream */
     }
 
     /* --- CRT SCANLINE & BACKGROUND --- */
     .scanline {
         width: 100%; height: 100px; z-index: 9999;
-        background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(255, 42, 109, 0.05) 50%, rgba(0,0,0,0) 100%);
+        background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(255, 140, 0, 0.05) 50%, rgba(0,0,0,0) 100%);
         opacity: 0.1; position: fixed; bottom: 100%; left: 0;
         animation: scanline 8s linear infinite; pointer-events: none;
     }
@@ -71,9 +82,9 @@ STYLING = """
     .stApp {
         background-color: var(--bg-deep);
         background-image: 
-            radial-gradient(circle at 50% 50%, rgba(255, 42, 109, 0.1) 0%, transparent 60%),
-            linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            radial-gradient(circle at 50% 50%, rgba(255, 140, 0, 0.1) 0%, transparent 60%),
+            linear-gradient(rgba(255, 140, 0, 0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 140, 0, 0.02) 1px, transparent 1px);
         background-size: 100% 100%, 40px 40px, 40px 40px;
         font-family: 'Rajdhani', sans-serif;
         color: var(--text-main);
@@ -81,13 +92,13 @@ STYLING = """
 
     /* --- TICKER --- */
     .ticker-wrap {
-        width: 100%; overflow: hidden; background: rgba(30, 0, 10, 0.8);
-        border-bottom: 1px solid var(--neon-red); white-space: nowrap;
+        width: 100%; overflow: hidden; background: rgba(50, 20, 0, 0.8);
+        border-bottom: 1px solid var(--neon-danger); white-space: nowrap;
         padding: 8px 0; margin-bottom: 20px;
     }
     .ticker {
         display: inline-block; animation: marquee 25s linear infinite;
-        font-family: 'Orbitron', sans-serif; color: var(--neon-red); font-size: 12px;
+        font-family: 'Orbitron', sans-serif; color: var(--neon-accent); font-size: 12px;
     }
 
     /* --- TYPOGRAPHY --- */
@@ -95,7 +106,7 @@ STYLING = """
         font-family: 'Orbitron', sans-serif;
         text-transform: uppercase;
         letter-spacing: 2px;
-        background: linear-gradient(90deg, #fff, var(--neon-cyan));
+        background: linear-gradient(90deg, #fff, var(--neon-accent));
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
@@ -106,14 +117,15 @@ STYLING = """
         backdrop-filter: blur(16px);
         border: 1px solid var(--glass-border);
         border-radius: 16px; padding: 24px; margin-bottom: 20px;
-        box-shadow: 0 0 20px rgba(255, 42, 109, 0.1);
+        box-shadow: 0 0 20px rgba(255, 140, 0, 0.1);
         transition: all 0.3s ease;
     }
     .glass-card:hover {
-        border-color: var(--neon-cyan);
-        box-shadow: 0 0 40px rgba(0, 243, 255, 0.2);
+        border-color: var(--neon-accent);
+        box-shadow: 0 0 40px rgba(255, 140, 0, 0.2);
         transform: translateY(-2px);
     }
+    .glass-card h1 { white-space: nowrap; } /* FIX: Optimal one line */
 
     /* --- RESULTS --- */
     .result-box {
@@ -121,21 +133,21 @@ STYLING = """
         font-family: 'Orbitron'; font-size: 26px; margin-top: 20px;
         transition: 0.5s;
     }
-    .res-safe { background: rgba(5, 255, 161, 0.1); border: 2px solid var(--neon-green); color: var(--neon-green); }
-    .res-danger { background: rgba(255, 42, 109, 0.1); border: 2px solid var(--neon-red); color: var(--neon-red); }
+    .res-safe { background: rgba(50, 205, 50, 0.1); border: 2px solid var(--neon-safe); color: var(--neon-safe); }
+    .res-danger { background: rgba(255, 69, 0, 0.1); border: 2px solid var(--neon-danger); color: var(--neon-danger); }
     
     /* --- BUTTONS --- */
     .stButton > button {
-        background: linear-gradient(90deg, rgba(0,243,255,0.1), rgba(255, 42, 109, 0.1));
-        border: 1px solid var(--neon-cyan); color: var(--neon-cyan);
+        background: linear-gradient(90deg, rgba(255, 140, 0, 0.1), rgba(255, 69, 0, 0.1));
+        border: 1px solid var(--neon-accent); color: var(--neon-accent);
         font-family: 'Orbitron'; letter-spacing: 1px;
         transition: 0.3s;
         padding: 12px 24px;
         border-radius: 8px;
     }
     .stButton > button:hover {
-        background: var(--neon-cyan); color: #000;
-        box-shadow: 0 0 25px var(--neon-cyan);
+        background: var(--neon-accent); color: #000;
+        box-shadow: 0 0 25px var(--neon-accent);
     }
     
     /* --- IMAGES --- */
@@ -144,15 +156,13 @@ STYLING = """
 <div class="scanline"></div>
 <div class="ticker-wrap">
     <div class="ticker">
-        /// SYSTEM: ONLINE /// MED-CORE AI V6.0 // BIO-DIAGNOSTIC ACTIVE // STATUS: {status_text} // ENGINEERED BY DIBYENDU KARMAHAPATRA //
+        /// SYSTEM: ONLINE /// MED-CORE AI V7.0 // BIO-DIAGNOSTIC ACTIVE // STATUS: {status_text} // ENGINEERED BY DIBYENDU KARMAHAPATRA //
     </div>
 </div>
 """
 st.markdown(STYLING, unsafe_allow_html=True)
 
 # -------------------- MOCKING SYSTEM (ZERO BUGS) --------------------
-# We check for TF/Keras availability inside this function for robustness.
-
 class MockModel:
     """Simulates AI prediction if real model is missing."""
     def predict(self, x, verbose=0):
@@ -164,17 +174,14 @@ class MockModel:
 
 @st.cache_resource
 def get_model():
-    # Check if TF is available AND model file exists
     if TF_AVAILABLE and os.path.exists(MODEL_PATH):
         try:
-            # Must reference load_model from the imported module
             model = load_model(MODEL_PATH)
-            # Warm-up a dummy forward pass to catch load issues early
             if hasattr(model, 'predict'):
                  _ = model.predict(np.zeros((1, IMAGE_SIZE[0], IMAGE_SIZE[1], 3), dtype=np.float32), verbose=0)
             return model
         except Exception as e:
-            st.error(f"Error loading Keras model, switching to simulation: {e}")
+            # Fatal TF/Keras load error -> Fallback to Mock
             return MockModel()
     return MockModel()
 
@@ -200,7 +207,6 @@ def preprocess_image(pil_img: Image.Image) -> np.ndarray:
     if TF_AVAILABLE and hasattr(globals(), 'preprocess_input') and preprocess_input is not None:
         arr = preprocess_input(arr)
     else:
-        # Simple scaling for mock/simulation mode
         arr = arr / 255.0
         
     return np.expand_dims(arr, axis=0)
@@ -211,7 +217,7 @@ def npimg_to_b64(np_img_bgr: np.ndarray) -> str:
     return base64.b64encode(im_png.tobytes()).decode()
 
 def create_pdf(image_name: str, result: str, confidence: str, notes: str) -> bytes:
-    """CRITICAL FIX: Removed heatmap embedding to simplify and stabilize PDF generation."""
+    """Creates a PDF report."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -222,7 +228,7 @@ def create_pdf(image_name: str, result: str, confidence: str, notes: str) -> byt
     pdf.set_font("Arial", "", 13)
     pdf.ln(6)
     pdf.cell(0, 8, f"Image: {image_name}", ln=True)
-    pdf.cell(0, 8, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True) # FIX: Use imported datetime
+    pdf.cell(0, 8, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
     pdf.cell(0, 8, f"AI Result: {result}", ln=True)
     pdf.cell(0, 8, f"Confidence: {confidence}", ln=True)
     pdf.ln(4)
@@ -239,8 +245,8 @@ def create_pdf(image_name: str, result: str, confidence: str, notes: str) -> byt
 
 def get_gradcam_data(pil_img: Image.Image, model: MockModel | tf.keras.Model):
     """Generates a simulated heatmap for the UI (simple overlay for demo)."""
-    # Use simple simulated heatmap for robustness
     img = np.array(pil_img.convert("RGB").resize(IMAGE_SIZE))
+    # Generate random heatmap data
     heatmap = cv2.applyColorMap(np.uint8(255 * np.random.rand(*IMAGE_SIZE)), cv2.COLORMAP_JET)
     
     # Blend the heatmap and image
@@ -251,7 +257,7 @@ def get_gradcam_data(pil_img: Image.Image, model: MockModel | tf.keras.Model):
 # -------------------- MAIN LAYOUT --------------------
 
 # --- HEADER & TABS ---
-st.markdown("<h1 style='text-align:center'>PNEUMONIA <span style='color:var(--neon-red)'>DIAGNOSTIC</span></h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center'>PNEUMONIA <span style='color:var(--neon-danger)'>DIAGNOSTIC</span></h1>", unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["💠 SCANNER", "📂 BATCH ANALYZER", "📧 REPORTING & HISTORY"])
 
@@ -446,7 +452,7 @@ with tab3:
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center; color:#555; font-size:12px;'>
-    NEXUS MED-CORE V6.0 // SECURE MEDICAL AI INTERFACE<br>
+    NEXUS MED-CORE V7.0 // SECURE MEDICAL AI INTERFACE<br>
     ENGINEERED BY DIBYENDU KARMAHAPATRA
 </div>
 """, unsafe_allow_html=True)
