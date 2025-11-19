@@ -650,7 +650,7 @@ with tab_analysis:
         df['Confidence_Value'] = df['Confidence'].str.replace('%', '').astype(float)
         df['Index'] = range(len(df)) # Used for Line Chart
 
-        # 1. Statistical Summary Table (New)
+        # 1. Statistical Summary Table
         st.subheader("Statistical Summary")
         stats = {
             'Metric': ['Total Predictions', 'Mean Confidence', 'Std Dev Confidence', 'Max Confidence'],
@@ -668,38 +668,66 @@ with tab_analysis:
         
         st.markdown("---")
         
-        # 2. Confidence Density Plot (New - Modern Analysis)
+        # 2. Confidence Density Plot (FIXED: Conditional execution for stability)
         st.subheader("Confidence Score Distribution")
         st.markdown("Visualizes how concentrated the model's confidence scores are.")
 
-        chart_density = alt.Chart(df).transform_density(
-            'Confidence_Value',
-            as_=['Confidence', 'Density'],
-            groupby=['Result']
-        ).mark_area(opacity=0.6, line=True).encode(
-            x=alt.X('Confidence:Q', title='Confidence (%)'),
-            y=alt.Y('Density:Q', title='Density'),
-            color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
-            tooltip=['Result', 'Confidence', 'Density']
-        ).properties(
-            title='Confidence Distribution (KDE)'
-        ).configure_view(
-            strokeOpacity=0,
-            fill=CARD_BG_COLOR
-        ).configure_title(
-            color=TEXT_COLOR
-        ).configure_axis(
-            labelColor=TEXT_COLOR,
-            titleColor=TEXT_COLOR
-        ).configure_legend(
-            titleColor=TEXT_COLOR,
-            labelColor=TEXT_COLOR
-        ).interactive()
-        st.altair_chart(chart_density, use_container_width=True)
+        # Check if we have enough data points (min 2 per group) for density plot
+        counts_by_result = df['Result'].value_counts()
+        has_density_data = all(count >= 2 for count in counts_by_result)
+
+        if has_density_data:
+            chart_density = alt.Chart(df).transform_density(
+                'Confidence_Value',
+                as_=['Confidence', 'Density'],
+                groupby=['Result']
+            ).mark_area(opacity=0.6, line=True).encode(
+                x=alt.X('Confidence:Q', title='Confidence (%)'),
+                y=alt.Y('Density:Q', title='Density'),
+                color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+                tooltip=['Result', 'Confidence', 'Density']
+            ).properties(
+                title='Confidence Distribution (KDE)'
+            ).configure_view(
+                strokeOpacity=0,
+                fill=CARD_BG_COLOR
+            ).configure_title(
+                color=TEXT_COLOR
+            ).configure_axis(
+                labelColor=TEXT_COLOR,
+                titleColor=TEXT_COLOR
+            ).configure_legend(
+                titleColor=TEXT_COLOR,
+                labelColor=TEXT_COLOR
+            ).interactive()
+            st.altair_chart(chart_density, use_container_width=True)
+        else:
+            st.warning("Insufficient data points to generate the density plot. Need at least 2 predictions per result type (Normal/Pneumonia).")
+            # Fallback to a simple histogram
+            chart_hist = alt.Chart(df).mark_bar().encode(
+                x=alt.X('Confidence_Value', title='Confidence (%)', bin=True),
+                y=alt.Y('count()', title='Count'),
+                color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+                tooltip=['Result', 'count()']
+            ).properties(
+                title='Confidence Histogram (Fallback)'
+            ).configure_view(
+                strokeOpacity=0,
+                fill=CARD_BG_COLOR
+            ).configure_title(
+                color=TEXT_COLOR
+            ).configure_axis(
+                labelColor=TEXT_COLOR,
+                titleColor=TEXT_COLOR
+            ).configure_legend(
+                titleColor=TEXT_COLOR,
+                labelColor=TEXT_COLOR
+            ).interactive()
+            st.altair_chart(chart_hist, use_container_width=True)
 
         st.markdown("---")
 
-        # 3. Time Series Scatter Plot (New - Trend Analysis)
+        # 3. Time Series Scatter Plot (Trend Analysis)
         st.subheader("Confidence Trend by Prediction Index")
         st.markdown("Tracks confidence for each diagnosis over the course of the session.")
         
@@ -713,7 +741,7 @@ with tab_analysis:
             tooltip=tooltip_fields
         )
 
-        # Add a simple linear trend line for overall confidence (optional)
+        # Add a simple linear trend line for overall confidence 
         chart_trend = chart_scatter.transform_regression('Index', 'Confidence_Value').mark_line(strokeDash=[5,5], color=ACCENT_COLOR).interactive()
 
         st.altair_chart((chart_scatter + chart_trend).properties(
@@ -733,7 +761,7 @@ with tab_analysis:
 
         st.markdown("---")
 
-        # 4. Diagnosis Breakdown (Donut Chart - Retained)
+        # 4. Diagnosis Breakdown (Donut Chart)
         st.subheader("Diagnosis Frequency Breakdown")
         counts_df = df["Result"].value_counts().reset_index()
         counts_df.columns = ['Result', 'Count']
