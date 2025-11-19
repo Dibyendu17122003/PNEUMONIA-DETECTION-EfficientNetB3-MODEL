@@ -167,9 +167,10 @@ apply_theme()
 with st.sidebar:
     st.markdown("## ⚙ Settings & Configuration")
     
+    # --- FIX APPLIED HERE: st.experimental_rerun() changed to st.rerun() ---
     if st.button("🎨 Toggle Theme (Light/Dark)"):
         st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
-        st.experimental_rerun()
+        st.rerun() 
         
     st.markdown("---")
     st.markdown("### Model Behavior")
@@ -529,7 +530,6 @@ with tab_single:
                     except Exception:
                         st.error("An unexpected error occurred during the prediction process.", icon="❌")
                         with st.expander("Show error details"):
-                            # This traceback is for the original prediction error, but the NameError is fixed.
                             st.code(traceback.format_exc())
 
 # -------------------- TAB 2: BATCH PROCESSING --------------------
