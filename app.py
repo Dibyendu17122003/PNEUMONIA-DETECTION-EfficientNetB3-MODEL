@@ -40,6 +40,8 @@ MODEL_FILENAME = "pneumonia_final_Dibyendu.h5"
 MODEL_PATH = os.path.join(BASE_DIR, MODEL_FILENAME)
 IMAGE_SIZE = (300, 300)
 CLASS_NAMES = ["Normal", "Pneumonia"] # index 0 = Normal, 1 = Pneumonia
+NORMAL_IDX = 0
+PNEUMONIA_IDX = 1
 
 # -------------------- SESSION STATE INIT -----------------
 if "theme" not in st.session_state:
@@ -111,6 +113,15 @@ def apply_theme():
             border-left: 5px solid #FF4500; /* Red accent */
             color: #FF4500;
         }}
+
+        /* Detailed Probability Box */
+        .prob-box {{
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(88, 166, 255, 0.4);
+            margin-bottom: 15px;
+            font-size: 14px;
+        }}
         
         /* Images - Fully Responsive */
         .responsive-img {{
@@ -152,6 +163,40 @@ def apply_theme():
 
 apply_theme()
 
+# -------------------- SIDEBAR CONTROLS (Define variables in global scope) ------------------------
+with st.sidebar:
+    st.markdown("## ⚙ Settings & Configuration")
+    
+    if st.button("🎨 Toggle Theme (Light/Dark)"):
+        st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
+        st.experimental_rerun()
+        
+    st.markdown("---")
+    st.markdown("### Model Behavior")
+    
+    # NEW FEATURE: Adjustable threshold
+    prediction_threshold = st.slider(
+        "Pneumonia Classification Threshold (%)",
+        min_value=50, max_value=99, value=80, step=1,
+        help="Confidence level required for the AI to classify the result as PNEUMONIA."
+    )
+    
+    enable_gradcam = st.checkbox(
+        "🔥 Grad-CAM heatmap (Explainability)", 
+        value=True, 
+        help="Generates a heat map overlay showing the regions of the image the AI focused on."
+    )
+
+    st.markdown("---")
+    st.markdown("### 📧 Email Configuration")
+    sender_email = st.text_input("Sender Gmail", placeholder="yourname@gmail.com")
+    sender_app_password = st.text_input("Gmail App Password", type="password", help="Use a Gmail App Password, not your regular password.")
+    
+    st.markdown("---")
+    st.markdown(f"*Model:* `{MODEL_FILENAME}`")
+    st.markdown("*Input:* 300×300 RGB (EfficientNet preprocess)")
+
+
 # -------------------- MODEL LOAD HELPERS ------------------------
 @st.cache_resource(show_spinner="Loading and warming up AI Model...")
 def load_model_cached():
@@ -160,10 +205,8 @@ def load_model_cached():
         st.error(f"FATAL ERROR: Model file not found at: {MODEL_PATH}. Please ensure '{MODEL_FILENAME}' is in the app directory.")
         st.stop()
     
-    # Load model without compiling, as we only need inference
     model = load_model(MODEL_PATH, compile=False) 
     
-    # Warm-up a dummy forward pass to catch load/runtime issues early
     try:
         _ = model.predict(np.zeros((1, IMAGE_SIZE[0], IMAGE_SIZE[1], 3), dtype=np.float32), verbose=0)
     except Exception as e:
@@ -188,7 +231,7 @@ def render_gauge(percent: float, label: str):
     """Draw a clean semicircle gauge using inline SVG for confidence visualization."""
     p = max(0, min(100, percent))
     angle = -90 + (p * 180.0 / 100.0)
-    gauge_color = "#FF4500" if p > 50 else "#00FF7F" # Red for high Pneumonia confidence, Green for Normal
+    gauge_color = "#FF4500" if p > 50 else "#00FF7F"
     
     st.markdown(f"""
     <div class='gauge-wrapper'>
@@ -275,10 +318,10 @@ def generate_pdf_report(image_name: str, result: str, confidence: float, notes: 
     pdf.ln(4)
     
     pdf.set_font("Arial", "I", 11)
-    pdf.set_text_color(100, 100, 100) # Dark grey disclaimer text
+    pdf.set_text_color(100, 100, 100)
     disclaimer = "Disclaimer: This AI tool is for research/educational use only and does not constitute a medical diagnosis. Consult a qualified clinician for interpretation."
     pdf.multi_cell(0, 7, disclaimer)
-    pdf.set_text_color(0, 0, 0) # Reset text color
+    pdf.set_text_color(0, 0, 0)
     pdf.ln(4)
     
     pdf.set_font("Arial", "B", 12)
@@ -357,6 +400,7 @@ tab_single, tab_batch, tab_history = st.tabs(["📊 Single Prediction", "📦 Ba
 with tab_single:
     st.markdown("### Upload and Analyze a Chest X-ray")
     
+    # Use fluid columns for responsiveness (adjusts automatically on mobile)
     col_upload, col_result = st.columns([1.5, 2], gap="large")
 
     with col_upload:
@@ -368,7 +412,6 @@ with tab_single:
             if uploaded:
                 try:
                     pil_img = Image.open(uploaded)
-                    # Store original as base64 for display
                     st.session_state.last_original_b64 = base64.b64encode(uploaded.getvalue()).decode()
                     
                     st.markdown(f"**Original Image: {uploaded.name}**")
@@ -406,29 +449,45 @@ with tab_single:
                         batch = prepare_image(pil_img)
                         probs = model.predict(batch, verbose=0)[0]  
                         
-                        top_idx = int(np.argmax(probs))
-                        label = CLASS_NAMES[top_idx]
-                        conf = probs[top_idx] * 100.0
+                        pneu_conf = probs[PNEUMONIA_IDX] * 100.0
                         
-                        # 2. Show result banner and gauge
+                        # Determine final label based on the dynamic threshold
+                        if pneu_conf >= prediction_threshold:
+                            label = CLASS_NAMES[PNEUMONIA_IDX]
+                            conf = pneu_conf
+                        else:
+                            label = CLASS_NAMES[NORMAL_IDX]
+                            conf = probs[NORMAL_IDX] * 100.0
+
+                        # 2. Show detailed probabilities and final result
+                        col_prob_n, col_prob_p = st.columns(2)
+                        with col_prob_n:
+                             st.markdown(f"<div class='prob-box'>**Normal Probability:** {probs[NORMAL_IDX]*100:.2f}%</div>", unsafe_allow_html=True)
+                        with col_prob_p:
+                             st.markdown(f"<div class='prob-box'>**Pneumonia Probability:** {probs[PNEUMONIA_IDX]*100:.2f}%</div>", unsafe_allow_html=True)
+                        
+                        st.info(f"Using threshold: **{prediction_threshold}%**")
+
                         style = "result-pneumonia" if label == "Pneumonia" else "result-normal"
                         st.markdown(f"<div class='result-banner {style}'>"
-                                    f"Final Prediction: {'**PNEUMONIA DETECTED**' if label=='Pneumonia' else '**NORMAL**'}<br>"
+                                    f"FINAL DIAGNOSIS: {'**PNEUMONIA DETECTED**' if label=='Pneumonia' else '**NORMAL**'}<br>"
                                     f"Confidence: {conf:.2f}%</div>", unsafe_allow_html=True)
                         
-                        render_gauge(conf, "Confidence")
+                        render_gauge(conf, f"{label} Confidence")
 
                         # 3. Grad-CAM (if enabled)
                         if enable_gradcam:
                             st.subheader("🔥 Grad-CAM Explainability")
                             try:
-                                overlay_bgr = gradcam_overlay(pil_img, model, batch, top_idx)
+                                # Use the index of the predicted class for Grad-CAM target
+                                target_idx_for_cam = PNEUMONIA_IDX if label == "Pneumonia" else NORMAL_IDX
+                                overlay_bgr = gradcam_overlay(pil_img, model, batch, target_idx_for_cam)
                                 st.session_state.last_overlay_b64 = npimg_to_b64(overlay_bgr)
 
                                 col_heat_img, col_heat_dl = st.columns([1, 1], gap="small")
                                 with col_heat_img:
                                     st.markdown("##### Activation Map")
-                                    st.image(base64.b64decode(st.session_state.last_overlay_b64), caption="Highlighted Risk Regions", use_column_width="always")
+                                    st.image(base64.b64decode(st.session_state.last_overlay_b64), caption=f"Highlighted regions for '{label}' prediction", use_column_width="always")
                                 with col_heat_dl:
                                     st.markdown("##### Download Artifacts")
                                     st.download_button(
@@ -470,6 +529,7 @@ with tab_single:
                     except Exception:
                         st.error("An unexpected error occurred during the prediction process.", icon="❌")
                         with st.expander("Show error details"):
+                            # This traceback is for the original prediction error, but the NameError is fixed.
                             st.code(traceback.format_exc())
 
 # -------------------- TAB 2: BATCH PROCESSING --------------------
@@ -488,14 +548,23 @@ with tab_batch:
                         try:
                             im = Image.open(f)
                             p = model.predict(prepare_image(im), verbose=0)[0]
-                            idx = int(np.argmax(p))
-                            rows.append([f.name, CLASS_NAMES[idx], f"{p[idx]*100:.2f}%"])
+                            pneu_conf = p[PNEUMONIA_IDX] * 100.0
+                            
+                            # Apply the same classification threshold to batch results
+                            if pneu_conf >= prediction_threshold:
+                                label = CLASS_NAMES[PNEUMONIA_IDX]
+                                conf = pneu_conf
+                            else:
+                                label = CLASS_NAMES[NORMAL_IDX]
+                                conf = p[NORMAL_IDX] * 100.0
+
+                            rows.append([f.name, label, f"{conf:.2f}%"])
                         except Exception:
                             rows.append([f.name, "Error", "—"])
                     
                     dfb = pd.DataFrame(rows, columns=["Image", "Result", "Confidence"])
                     st.session_state.batch_results = dfb
-                    st.success("Batch prediction complete.", icon="✅")
+                    st.success(f"Batch prediction complete. Used threshold: {prediction_threshold}%", icon="✅")
 
     if st.session_state.batch_results is not None:
         st.markdown("### Batch Results Table")
