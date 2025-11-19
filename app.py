@@ -62,9 +62,8 @@ if "last_pdf_bytes" not in st.session_state:
     st.session_state.last_pdf_bytes = None
 if "doctor_notes" not in st.session_state:
     st.session_state.doctor_notes = ""
-# REMOVING 'batch_results' as it will now be stored in 'history'
-# if "batch_results" not in st.session_state:
-#     st.session_state.batch_results = None
+if "latest_batch_results" not in st.session_state:
+    st.session_state.latest_batch_results = None # Re-introducing this to display results immediately after batch run
     
 # -------------------- THEME / STYLE (Hardcoded Dark Mode) ------------------
 
@@ -441,6 +440,9 @@ with tab_single:
         predict_btn = st.button("🚀 Run AI Prediction", use_container_width=True, type="primary")
 
         if predict_btn:
+            # Reset batch results when running single prediction
+            st.session_state.latest_batch_results = None 
+            
             if pil_img is None:
                 st.warning("Please upload an image first to run the prediction.", icon="⚠️")
                 st.session_state.last_overlay_b64 = None
@@ -543,16 +545,20 @@ with tab_batch:
     st.markdown("### Process Multiple X-rays")
     
     with st.container(border=True):
+        # NOTE: Using a key here is crucial for Streamlit to handle the file list correctly across reruns
         batch_files = st.file_uploader("Upload Multiple X-rays (JPG/PNG)", type=["jpg","jpeg","png"], accept_multiple_files=True, key="batch_uploader")
         
         if batch_files:
             st.info(f"Ready to process {len(batch_files)} images.")
             if st.button("▶ Run Batch Prediction", use_container_width=True, type="primary"):
-                rows = []
-                start_time = len(st.session_state.history) # Get the current length to isolate batch results
+                
+                rows_for_display = []
+                history_entries = []
+                
                 with st.spinner(f"Running batch predictions on {len(batch_files)} files..."):
                     for f in batch_files:
                         current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+                        
                         try:
                             im = Image.open(f)
                             p = model.predict(prepare_image(im), verbose=0)[0]
@@ -566,51 +572,58 @@ with tab_batch:
                                 label = CLASS_NAMES[NORMAL_IDX]
                                 conf = p[NORMAL_IDX] * 100.0
 
-                            # Append to the main history log
-                            result_data = {
+                            # Data for history (required for Analysis tab)
+                            history_entries.append({
                                 "Image": f.name,
                                 "Result": label,
                                 "Confidence": f"{conf:.2f}%",
                                 "Time": current_time,
                                 "Confidence_Value": conf
-                            }
-                            st.session_state.history.append(result_data)
-                            rows.append([f.name, label, f"{conf:.2f}%"])
+                            })
+                            
+                            # Data for immediate display in Batch tab
+                            rows_for_display.append([f.name, label, f"{conf:.2f}%"])
+                            
                         except Exception:
-                            # Log error case to history as well for completeness, but with 0% confidence
-                            error_data = {
+                            # Log error case to history as well for completeness
+                            history_entries.append({
                                 "Image": f.name,
                                 "Result": "Error",
                                 "Confidence": "—",
                                 "Time": current_time,
-                                "Confidence_Value": 0.0 # Use a placeholder value for error
-                            }
-                            st.session_state.history.append(error_data)
-                            rows.append([f.name, "Error", "—"])
+                                "Confidence_Value": 0.0 # Use 0.0 for error to prevent breaking stats
+                            })
+                            rows_for_display.append([f.name, "Error", "—"])
                     
-                    dfb = pd.DataFrame(rows, columns=["Image", "Result", "Confidence"])
-                    st.success(f"Batch prediction complete. Used threshold: {prediction_threshold}%", icon="✅")
+                    # 1. Append ALL results to the master history list
+                    st.session_state.history.extend(history_entries)
                     
-                    # Store the batch results for immediate display in this tab
-                    batch_results_df = dfb
+                    # 2. Store results for immediate display in the batch tab
+                    df_latest_batch = pd.DataFrame(rows_for_display, columns=["Image", "Result", "Confidence"])
+                    st.session_state.latest_batch_results = df_latest_batch
                     
-        # Check if there are any results in the history from this batch (from start_time onwards)
-        if st.session_state.history:
-            # Filter history for the last batch run (assuming user wants to see the latest batch)
-            # A more robust solution would be to tag the batch results, but for simplicity, we use the dataframe created in the batch loop.
-            if 'batch_results_df' in locals():
-                st.markdown("### Latest Batch Results Table")
-                st.dataframe(batch_results_df, use_container_width=True)
-                st.download_button(
-                    "⬇ Download Latest Batch Results (CSV)",
-                    data=batch_results_df.to_csv(index=False).encode("utf-8"),
-                    file_name="latest_batch_results.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-            elif len(st.session_state.history) > 0 and 'batch_results_df' not in locals():
-                 st.info("No batch prediction has been run in this tab yet. Check the 'History Log' tab for all session predictions.")
+                    st.success(f"Batch prediction complete. Added {len(history_entries)} results to history. Used threshold: {prediction_threshold}%", icon="✅")
+                    # Rerun to show new results in Analysis
+                    st.rerun() 
 
+
+    if st.session_state.latest_batch_results is not None:
+        st.markdown("### Latest Batch Results Table")
+        
+        # Display the results stored in session state
+        st.dataframe(st.session_state.latest_batch_results, use_container_width=True)
+        
+        # Add download button for the latest batch
+        st.download_button(
+            "⬇ Download Latest Batch Results (CSV)",
+            data=st.session_state.latest_batch_results.to_csv(index=False).encode("utf-8"),
+            file_name="latest_batch_results.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    elif st.session_state.history:
+        st.info("No batch prediction has been run yet in this tab, but history is available. Check the 'History Log' and 'Analysis & Trends' tabs.")
+        
 
 # -------------------- TAB 3: HISTORY LOG --------------------
 with tab_history:
@@ -683,9 +696,10 @@ with tab_analysis:
         if df_valid.empty:
             st.warning("No successful predictions were recorded to perform numerical analysis.")
         else:
-            df_valid['Index'] = range(len(df_valid)) # Used for Line Chart
+            # Re-index only the valid predictions for the time-series chart
+            df_valid['Index'] = range(len(df_valid)) 
 
-            # 1. Statistical Summary Table
+            ## Statistical Summary
             st.subheader("Statistical Summary")
             stats = {
                 'Metric': ['Total Valid Predictions', 'Mean Confidence', 'Std Dev Confidence', 'Max Confidence'],
@@ -703,7 +717,7 @@ with tab_analysis:
             
             st.markdown("---")
             
-            # 2. Confidence Density Plot
+            ## Confidence Density Plot
             st.subheader("Confidence Score Distribution")
             st.markdown("Visualizes how concentrated the model's confidence scores are.")
 
@@ -761,7 +775,7 @@ with tab_analysis:
 
             st.markdown("---")
 
-            # 3. Time Series Scatter Plot (Trend Analysis)
+            ## Time Series Scatter Plot (Trend Analysis)
             st.subheader("Confidence Trend by Prediction Index")
             st.markdown("Tracks confidence for each diagnosis over the course of the session.")
             
@@ -795,7 +809,7 @@ with tab_analysis:
 
             st.markdown("---")
 
-            # 4. Diagnosis Breakdown (Donut Chart)
+            ## Diagnosis Breakdown (Donut Chart)
             st.subheader("Diagnosis Frequency Breakdown (Valid Predictions)")
             counts_df = df_valid["Result"].value_counts().reset_index()
             counts_df.columns = ['Result', 'Count']
