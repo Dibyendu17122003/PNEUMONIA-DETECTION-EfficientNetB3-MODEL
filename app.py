@@ -47,7 +47,7 @@ PNEUMONIA_IDX = 1
 BG_COLOR = "#0A101A"     # Deep Dark Background
 CARD_BG_COLOR = "#1B2A3A" # Dark Card Background (Blue-Grey)
 ACCENT_COLOR = "#4DEEEA"   # Cyan/Aqua Accent for glow
-TEXT_COLOR = "#E0FFFF"    # Off-White/Cyan Text
+TEXT_COLOR = "#E0FFFF"  # Off-White/Cyan Text
 SUCCESS_COLOR = "#00FF7F"  # Bright Green for Normal
 FAILURE_COLOR = "#FF6347"  # Tomato Red for Pneumonia
 
@@ -62,8 +62,9 @@ if "last_pdf_bytes" not in st.session_state:
     st.session_state.last_pdf_bytes = None
 if "doctor_notes" not in st.session_state:
     st.session_state.doctor_notes = ""
-if "batch_results" not in st.session_state:
-    st.session_state.batch_results = None
+# REMOVING 'batch_results' as it will now be stored in 'history'
+# if "batch_results" not in st.session_state:
+#     st.session_state.batch_results = None
     
 # -------------------- THEME / STYLE (Hardcoded Dark Mode) ------------------
 
@@ -82,9 +83,9 @@ def apply_theme():
         
         /* Main Header Glow Effect */
         h1.main-header {{
-             text-shadow: 0 0 10px {ACCENT_COLOR}, 0 0 20px rgba(77, 238, 234, 0.6);
-             text-align: center;
-             padding-bottom: 20px;
+              text-shadow: 0 0 10px {ACCENT_COLOR}, 0 0 20px rgba(77, 238, 234, 0.6);
+              text-align: center;
+              padding-bottom: 20px;
         }}
         
         /* Custom Card/Container Style (Glass/Glow Effect) */
@@ -219,9 +220,9 @@ def load_model_cached():
         # Dummy prediction for warm-up
         _ = model.predict(np.zeros((1, IMAGE_SIZE[0], IMAGE_SIZE[1], 3), dtype=np.float32), verbose=0)
     except Exception as e:
-         st.error(f"Model warm-up failed. Check model file integrity. Error: {e}")
-         st.stop()
-         
+          st.error(f"Model warm-up failed. Check model file integrity. Error: {e}")
+          st.stop()
+          
     return model
 
 def prepare_image(pil_img: Image.Image) -> np.ndarray:
@@ -246,15 +247,11 @@ def render_gauge(percent: float, label: str):
     st.markdown(f"""
     <div class='gauge-wrapper'>
       <svg viewBox="0 0 100 60" style="width: 150px; max-width: 90%;">
-        <!-- Track -->
         <path d="M10,50 A40,40 0 0,1 90,50" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="6"/>
-        <!-- Fill -->
         <path d="M10,50 A40,40 0 0,1 90,50" fill="none" stroke="{gauge_color}" stroke-width="6"
               stroke-dasharray="{p*1.256},{125.6}"/>
-        <!-- Needle -->
         <line x1="50" y1="50" x2="{50 + 38 * np.cos(np.radians(angle))}" y2="{50 + 38 * np.sin(np.radians(angle))}"
               stroke="{gauge_color}" stroke-width="2"/>
-        <!-- Text Label -->
         <text x="50" y="58" text-anchor="middle" font-size="8" fill="{TEXT_COLOR}">{label}: {p:.1f}%</text>
       </svg>
     </div>
@@ -289,7 +286,7 @@ def gradcam_overlay(pil_img: Image.Image, model: tf.keras.Model, processed_batch
 
     grads = tape.gradient(loss, conv_out)
     if grads is None:
-         return np.asarray(pil_img.convert("RGB").resize(IMAGE_SIZE))[:, :, ::-1]
+          return np.asarray(pil_img.convert("RGB").resize(IMAGE_SIZE))[:, :, ::-1]
 
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     conv_out = conv_out[0]
@@ -471,16 +468,16 @@ with tab_single:
                         # 2. Show detailed probabilities and final result
                         col_prob_n, col_prob_p = st.columns(2)
                         with col_prob_n:
-                             st.markdown(f"<div class='prob-box'>**Normal Probability:** {probs[NORMAL_IDX]*100:.2f}%</div>", unsafe_allow_html=True)
+                              st.markdown(f"<div class='prob-box'>**Normal Probability:** {probs[NORMAL_IDX]*100:.2f}%</div>", unsafe_allow_html=True)
                         with col_prob_p:
-                             st.markdown(f"<div class='prob-box'>**Pneumonia Probability:** {probs[PNEUMONIA_IDX]*100:.2f}%</div>", unsafe_allow_html=True)
+                              st.markdown(f"<div class='prob-box'>**Pneumonia Probability:** {probs[PNEUMONIA_IDX]*100:.2f}%</div>", unsafe_allow_html=True)
                         
                         st.info(f"Classification threshold applied: **{prediction_threshold}%**")
 
                         style = "result-pneumonia" if label == "Pneumonia" else "result-normal"
                         st.markdown(f"<div class='result-banner {style}'>"
-                                    f"FINAL DIAGNOSIS: {'**PNEUMONIA DETECTED**' if label=='Pneumonia' else '**NORMAL**'}<br>"
-                                    f"Confidence: {conf:.2f}%</div>", unsafe_allow_html=True)
+                                        f"FINAL DIAGNOSIS: {'**PNEUMONIA DETECTED**' if label=='Pneumonia' else '**NORMAL**'}<br>"
+                                        f"Confidence: {conf:.2f}%</div>", unsafe_allow_html=True)
                         
                         render_gauge(conf, f"{label} Confidence")
 
@@ -551,9 +548,11 @@ with tab_batch:
         if batch_files:
             st.info(f"Ready to process {len(batch_files)} images.")
             if st.button("▶ Run Batch Prediction", use_container_width=True, type="primary"):
+                rows = []
+                start_time = len(st.session_state.history) # Get the current length to isolate batch results
                 with st.spinner(f"Running batch predictions on {len(batch_files)} files..."):
-                    rows = []
                     for f in batch_files:
+                        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
                         try:
                             im = Image.open(f)
                             p = model.predict(prepare_image(im), verbose=0)[0]
@@ -567,24 +566,51 @@ with tab_batch:
                                 label = CLASS_NAMES[NORMAL_IDX]
                                 conf = p[NORMAL_IDX] * 100.0
 
+                            # Append to the main history log
+                            result_data = {
+                                "Image": f.name,
+                                "Result": label,
+                                "Confidence": f"{conf:.2f}%",
+                                "Time": current_time,
+                                "Confidence_Value": conf
+                            }
+                            st.session_state.history.append(result_data)
                             rows.append([f.name, label, f"{conf:.2f}%"])
                         except Exception:
+                            # Log error case to history as well for completeness, but with 0% confidence
+                            error_data = {
+                                "Image": f.name,
+                                "Result": "Error",
+                                "Confidence": "—",
+                                "Time": current_time,
+                                "Confidence_Value": 0.0 # Use a placeholder value for error
+                            }
+                            st.session_state.history.append(error_data)
                             rows.append([f.name, "Error", "—"])
                     
                     dfb = pd.DataFrame(rows, columns=["Image", "Result", "Confidence"])
-                    st.session_state.batch_results = dfb
                     st.success(f"Batch prediction complete. Used threshold: {prediction_threshold}%", icon="✅")
+                    
+                    # Store the batch results for immediate display in this tab
+                    batch_results_df = dfb
+                    
+        # Check if there are any results in the history from this batch (from start_time onwards)
+        if st.session_state.history:
+            # Filter history for the last batch run (assuming user wants to see the latest batch)
+            # A more robust solution would be to tag the batch results, but for simplicity, we use the dataframe created in the batch loop.
+            if 'batch_results_df' in locals():
+                st.markdown("### Latest Batch Results Table")
+                st.dataframe(batch_results_df, use_container_width=True)
+                st.download_button(
+                    "⬇ Download Latest Batch Results (CSV)",
+                    data=batch_results_df.to_csv(index=False).encode("utf-8"),
+                    file_name="latest_batch_results.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            elif len(st.session_state.history) > 0 and 'batch_results_df' not in locals():
+                 st.info("No batch prediction has been run in this tab yet. Check the 'History Log' tab for all session predictions.")
 
-    if st.session_state.batch_results is not None:
-        st.markdown("### Batch Results Table")
-        st.dataframe(st.session_state.batch_results, use_container_width=True)
-        st.download_button(
-            "⬇ Download Batch Results (CSV)",
-            data=st.session_state.batch_results.to_csv(index=False).encode("utf-8"),
-            file_name="batch_results.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
 
 # -------------------- TAB 3: HISTORY LOG --------------------
 with tab_history:
@@ -644,73 +670,116 @@ with tab_analysis:
     st.markdown("### 📈 Prediction Analysis and Visualization")
     
     if not st.session_state.history:
-        st.info("Run predictions in the 'Single Prediction' tab to generate data for analysis.")
+        st.info("Run predictions in the 'Single Prediction' or 'Batch Processing' tabs to generate data for analysis.")
     else:
         df = pd.DataFrame(st.session_state.history)
-        df['Confidence_Value'] = df['Confidence'].str.replace('%', '').astype(float)
-        df['Index'] = range(len(df)) # Used for Line Chart
-
-        # 1. Statistical Summary Table
-        st.subheader("Statistical Summary")
-        stats = {
-            'Metric': ['Total Predictions', 'Mean Confidence', 'Std Dev Confidence', 'Max Confidence'],
-            'Value': [
-                len(df),
-                f"{df['Confidence_Value'].mean():.2f}%",
-                f"{df['Confidence_Value'].std(skipna=True):.2f}%",
-                f"{df['Confidence_Value'].max():.2f}%"
-            ]
-        }
-        stats_df = pd.DataFrame(stats)
-        col_stats, col_gap = st.columns([1, 2])
-        with col_stats:
-            st.table(stats_df.set_index('Metric'))
         
-        st.markdown("---")
+        # Ensure 'Confidence_Value' is numeric (it is now guaranteed for non-Error entries)
+        df['Confidence_Value'] = pd.to_numeric(df['Confidence_Value'], errors='coerce') 
         
-        # 2. Confidence Density Plot (FIXED: Conditional execution for stability)
-        st.subheader("Confidence Score Distribution")
-        st.markdown("Visualizes how concentrated the model's confidence scores are.")
-
-        # Check if we have enough data points (min 2 per group) for density plot
-        counts_by_result = df['Result'].value_counts()
-        has_density_data = all(count >= 2 for count in counts_by_result)
-
-        if has_density_data:
-            chart_density = alt.Chart(df).transform_density(
-                'Confidence_Value',
-                as_=['Confidence', 'Density'],
-                groupby=['Result']
-            ).mark_area(opacity=0.6, line=True).encode(
-                x=alt.X('Confidence:Q', title='Confidence (%)'),
-                y=alt.Y('Density:Q', title='Density'),
-                color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
-                tooltip=['Result', 'Confidence', 'Density']
-            ).properties(
-                title='Confidence Distribution (KDE)'
-            ).configure_view(
-                strokeOpacity=0,
-                fill=CARD_BG_COLOR
-            ).configure_title(
-                color=TEXT_COLOR
-            ).configure_axis(
-                labelColor=TEXT_COLOR,
-                titleColor=TEXT_COLOR
-            ).configure_legend(
-                titleColor=TEXT_COLOR,
-                labelColor=TEXT_COLOR
-            ).interactive()
-            st.altair_chart(chart_density, use_container_width=True)
+        # Filter out "Error" entries for numerical calculations, but keep for total count/display if needed
+        df_valid = df[df['Result'] != 'Error'].copy()
+        
+        if df_valid.empty:
+            st.warning("No successful predictions were recorded to perform numerical analysis.")
         else:
-            st.warning("Insufficient data points to generate the density plot. Need at least 2 predictions per result type (Normal/Pneumonia).")
-            # Fallback to a simple histogram
-            chart_hist = alt.Chart(df).mark_bar().encode(
-                x=alt.X('Confidence_Value', title='Confidence (%)', bin=True),
-                y=alt.Y('count()', title='Count'),
-                color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
-                tooltip=['Result', 'count()']
-            ).properties(
-                title='Confidence Histogram (Fallback)'
+            df_valid['Index'] = range(len(df_valid)) # Used for Line Chart
+
+            # 1. Statistical Summary Table
+            st.subheader("Statistical Summary")
+            stats = {
+                'Metric': ['Total Valid Predictions', 'Mean Confidence', 'Std Dev Confidence', 'Max Confidence'],
+                'Value': [
+                    len(df_valid),
+                    f"{df_valid['Confidence_Value'].mean():.2f}%",
+                    f"{df_valid['Confidence_Value'].std(skipna=True):.2f}%",
+                    f"{df_valid['Confidence_Value'].max():.2f}%"
+                ]
+            }
+            stats_df = pd.DataFrame(stats)
+            col_stats, col_gap = st.columns([1, 2])
+            with col_stats:
+                st.table(stats_df.set_index('Metric'))
+            
+            st.markdown("---")
+            
+            # 2. Confidence Density Plot
+            st.subheader("Confidence Score Distribution")
+            st.markdown("Visualizes how concentrated the model's confidence scores are.")
+
+            counts_by_result = df_valid['Result'].value_counts()
+            has_density_data = all(count >= 2 for count in counts_by_result)
+
+            if has_density_data:
+                chart_density = alt.Chart(df_valid).transform_density(
+                    'Confidence_Value',
+                    as_=['Confidence', 'Density'],
+                    groupby=['Result']
+                ).mark_area(opacity=0.6, line=True).encode(
+                    x=alt.X('Confidence:Q', title='Confidence (%)'),
+                    y=alt.Y('Density:Q', title='Density'),
+                    color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+                    tooltip=['Result', 'Confidence', 'Density']
+                ).properties(
+                    title='Confidence Distribution (KDE)'
+                ).configure_view(
+                    strokeOpacity=0,
+                    fill=CARD_BG_COLOR
+                ).configure_title(
+                    color=TEXT_COLOR
+                ).configure_axis(
+                    labelColor=TEXT_COLOR,
+                    titleColor=TEXT_COLOR
+                ).configure_legend(
+                    titleColor=TEXT_COLOR,
+                    labelColor=TEXT_COLOR
+                ).interactive()
+                st.altair_chart(chart_density, use_container_width=True)
+            else:
+                st.warning("Insufficient data points for the Density plot (need at least 2 valid predictions per result type). Showing Histogram fallback.")
+                # Fallback to a simple histogram
+                chart_hist = alt.Chart(df_valid).mark_bar().encode(
+                    x=alt.X('Confidence_Value', title='Confidence (%)', bin=True),
+                    y=alt.Y('count()', title='Count'),
+                    color=alt.Color('Result:N', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+                    tooltip=['Result', 'count()']
+                ).properties(
+                    title='Confidence Histogram (Fallback)'
+                ).configure_view(
+                    strokeOpacity=0,
+                    fill=CARD_BG_COLOR
+                ).configure_title(
+                    color=TEXT_COLOR
+                ).configure_axis(
+                    labelColor=TEXT_COLOR,
+                    titleColor=TEXT_COLOR
+                ).configure_legend(
+                    titleColor=TEXT_COLOR,
+                    labelColor=TEXT_COLOR
+                ).interactive()
+                st.altair_chart(chart_hist, use_container_width=True)
+
+            st.markdown("---")
+
+            # 3. Time Series Scatter Plot (Trend Analysis)
+            st.subheader("Confidence Trend by Prediction Index")
+            st.markdown("Tracks confidence for each diagnosis over the course of the session.")
+            
+            # Add tooltips for detail on hover
+            tooltip_fields = ['Index', 'Image', 'Result', alt.Tooltip('Confidence_Value', format='.2f')]
+
+            chart_scatter = alt.Chart(df_valid).mark_circle(size=120).encode(
+                x=alt.X('Index', title='Prediction Number', axis=alt.Axis(format='d')),
+                y=alt.Y('Confidence_Value', title='Confidence (%)'),
+                color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+                tooltip=tooltip_fields
+            )
+
+            # Add a simple linear trend line for overall confidence 
+            chart_trend = chart_scatter.transform_regression('Index', 'Confidence_Value').mark_line(strokeDash=[5,5], color=ACCENT_COLOR).interactive()
+
+            st.altair_chart((chart_scatter + chart_trend).properties(
+                title='Prediction Confidence Over Time'
             ).configure_view(
                 strokeOpacity=0,
                 fill=CARD_BG_COLOR
@@ -722,75 +791,40 @@ with tab_analysis:
             ).configure_legend(
                 titleColor=TEXT_COLOR,
                 labelColor=TEXT_COLOR
-            ).interactive()
-            st.altair_chart(chart_hist, use_container_width=True)
+            ), use_container_width=True)
 
-        st.markdown("---")
+            st.markdown("---")
 
-        # 3. Time Series Scatter Plot (Trend Analysis)
-        st.subheader("Confidence Trend by Prediction Index")
-        st.markdown("Tracks confidence for each diagnosis over the course of the session.")
-        
-        # Add tooltips for detail on hover
-        tooltip_fields = ['Index', 'Image', 'Result', alt.Tooltip('Confidence_Value', format='.2f')]
+            # 4. Diagnosis Breakdown (Donut Chart)
+            st.subheader("Diagnosis Frequency Breakdown (Valid Predictions)")
+            counts_df = df_valid["Result"].value_counts().reset_index()
+            counts_df.columns = ['Result', 'Count']
+            counts_df['Percentage'] = (counts_df['Count'] / counts_df['Count'].sum()) * 100
+            
+            chart_pie = alt.Chart(counts_df).encode(
+                theta=alt.Theta("Count", stack=True),
+                color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
+                order=alt.Order('Percentage', sort='descending')
+            )
 
-        chart_scatter = alt.Chart(df).mark_circle(size=120).encode(
-            x=alt.X('Index', title='Prediction Number', axis=alt.Axis(format='d')),
-            y=alt.Y('Confidence_Value', title='Confidence (%)'),
-            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
-            tooltip=tooltip_fields
-        )
+            chart_arc = chart_pie.mark_arc(outerRadius=120, innerRadius=80, stroke=CARD_BG_COLOR, strokeWidth=2).encode(
+                tooltip=['Result', 'Count', alt.Tooltip('Percentage', format='.1f')]
+            )
 
-        # Add a simple linear trend line for overall confidence 
-        chart_trend = chart_scatter.transform_regression('Index', 'Confidence_Value').mark_line(strokeDash=[5,5], color=ACCENT_COLOR).interactive()
+            text = chart_pie.mark_text(radius=140).encode(
+                text=alt.Text('Percentage', format='.1f'),
+                color=alt.value(TEXT_COLOR) 
+            )
 
-        st.altair_chart((chart_scatter + chart_trend).properties(
-            title='Prediction Confidence Over Time'
-        ).configure_view(
-            strokeOpacity=0,
-            fill=CARD_BG_COLOR
-        ).configure_title(
-            color=TEXT_COLOR
-        ).configure_axis(
-            labelColor=TEXT_COLOR,
-            titleColor=TEXT_COLOR
-        ).configure_legend(
-            titleColor=TEXT_COLOR,
-            labelColor=TEXT_COLOR
-        ), use_container_width=True)
-
-        st.markdown("---")
-
-        # 4. Diagnosis Breakdown (Donut Chart)
-        st.subheader("Diagnosis Frequency Breakdown")
-        counts_df = df["Result"].value_counts().reset_index()
-        counts_df.columns = ['Result', 'Count']
-        counts_df['Percentage'] = (counts_df['Count'] / counts_df['Count'].sum()) * 100
-        
-        chart_pie = alt.Chart(counts_df).encode(
-            theta=alt.Theta("Count", stack=True),
-            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[SUCCESS_COLOR, FAILURE_COLOR])),
-            order=alt.Order('Percentage', sort='descending')
-        )
-
-        chart_arc = chart_pie.mark_arc(outerRadius=120, innerRadius=80, stroke=CARD_BG_COLOR, strokeWidth=2).encode(
-             tooltip=['Result', 'Count', alt.Tooltip('Percentage', format='.1f')]
-        )
-
-        text = chart_pie.mark_text(radius=140).encode(
-            text=alt.Text('Percentage', format='.1f'),
-            color=alt.value(TEXT_COLOR) 
-        )
-
-        st.altair_chart((chart_arc + text).configure_view(
-            strokeOpacity=0,
-            fill=CARD_BG_COLOR
-        ).configure_title(
-            color=TEXT_COLOR
-        ).configure_legend(
-            titleColor=TEXT_COLOR,
-            labelColor=TEXT_COLOR
-        ), use_container_width=True)
+            st.altair_chart((chart_arc + text).configure_view(
+                strokeOpacity=0,
+                fill=CARD_BG_COLOR
+            ).configure_title(
+                color=TEXT_COLOR
+            ).configure_legend(
+                titleColor=TEXT_COLOR,
+                labelColor=TEXT_COLOR
+            ), use_container_width=True)
 
 
 # -------------------- FOOTER ----------------------
