@@ -10,7 +10,7 @@ import pandas as pd
 from PIL import Image
 
 import streamlit as st
-import altair as alt # Used for advanced charting
+import altair as alt
 
 # TensorFlow / Keras (Assuming these are installed in the environment)
 import tensorflow as tf
@@ -60,45 +60,61 @@ if "batch_results" not in st.session_state:
     st.session_state.batch_results = None
     
 # -------------------- THEME / STYLE (Modern Blue/Grey) ------------------
+
+def get_theme_colors(theme):
+    """Returns a dictionary of colors based on the selected theme."""
+    if theme == "dark":
+        return {
+            "BG": "#0D1117",
+            "CARD_BG": "#161B22",
+            "ACCENT": "#58A6FF",
+            "TEXT": "#C9D1D9",
+            "SUCCESS": "#00FF7F",
+            "FAILURE": "#FF4500",
+        }
+    else: # Light mode (optimized for high contrast)
+        return {
+            "BG": "#FFFFFF",
+            "CARD_BG": "#F0F2F6",
+            "ACCENT": "#007BFF",
+            "TEXT": "#2C3E50",
+            "SUCCESS": "#008000",
+            "FAILURE": "#CC0000",
+        }
+
 def apply_theme():
-    """Applies modern, responsive CSS styling for Blue/Grey theme."""
-    # Define colors based on the current theme state
-    if st.session_state.theme == "dark":
-        DARK_BG = "#0D1117"
-        LIGHT_BG = "#161B22"
-        PRIMARY_BLUE = "#58A6FF"
-        TEXT_COLOR = "#C9D1D9"
-    else: # Light mode style (less detailed, but functional)
-        DARK_BG = "#FFFFFF"
-        LIGHT_BG = "#F0F2F6"
-        PRIMARY_BLUE = "#007BFF"
-        TEXT_COLOR = "#2C3E50"
+    """Applies modern, responsive CSS styling for dynamic theme."""
+    colors = get_theme_colors(st.session_state.theme)
+    
+    # Store current text color for use in Altair
+    st.session_state.text_color = colors['TEXT']
+    st.session_state.card_bg_color = colors['CARD_BG']
 
     st.markdown(f"""
     <style>
         /* General Background and Typography */
         .stApp {{
-            background-color: {DARK_BG};
-            color: {TEXT_COLOR};
+            background-color: {colors['BG']};
+            color: {colors['TEXT']};
         }}
         h1, h2, h3, h4, h5, h6, .stMarkdown, label {{
-            color: {TEXT_COLOR};
+            color: {colors['TEXT']};
         }}
         
-        /* Main Header Neon/Glow Effect (Dark mode only) */
+        /* Main Header Neon/Glow Effect (Adjusted based on mode) */
         h1.main-header {{
-             text-shadow: 0 0 8px {PRIMARY_BLUE}, 0 0 12px rgba(88, 166, 255, 0.4);
+             text-shadow: 0 0 8px {colors['ACCENT']}, 0 0 12px rgba(88, 166, 255, 0.4);
              text-align: center;
              padding-bottom: 20px;
         }}
         
         /* Custom Card/Container Style */
         .stContainer, .stTabs {{
-            background-color: {LIGHT_BG};
+            background-color: {colors['CARD_BG']};
             border-radius: 12px;
             padding: 25px;
             border: 1px solid rgba(88, 166, 255, 0.2);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
             margin-bottom: 20px;
         }}
         
@@ -112,22 +128,23 @@ def apply_theme():
         }}
         .result-normal {{
             background-color: rgba(0, 255, 127, 0.1); 
-            border-left: 5px solid #00FF7F; /* Green accent */
-            color: #00FF7F;
+            border-left: 5px solid {colors['SUCCESS']};
+            color: {colors['SUCCESS']};
         }}
         .result-pneumonia {{
             background-color: rgba(255, 69, 0, 0.1); 
-            border-left: 5px solid #FF4500; /* Red accent */
-            color: #FF4500;
+            border-left: 5px solid {colors['FAILURE']};
+            color: {colors['FAILURE']};
         }}
 
         /* Detailed Probability Box */
         .prob-box {{
             padding: 10px;
             border-radius: 8px;
-            border: 1px solid rgba(88, 166, 255, 0.4);
+            border: 1px solid {colors['ACCENT']};
             margin-bottom: 15px;
             font-size: 14px;
+            color: {colors['TEXT']};
         }}
         
         /* Images - Fully Responsive */
@@ -136,7 +153,7 @@ def apply_theme():
             height: auto;
             border-radius: 8px; 
             margin-top: 10px;
-            border: 2px solid {PRIMARY_BLUE};
+            border: 2px solid {colors['ACCENT']};
             box-shadow: 0 0 5px rgba(88, 166, 255, 0.5);
         }}
         
@@ -149,9 +166,9 @@ def apply_theme():
         
         /* Button Styling (ensures consistency) */
         .stButton>button {{
-            background-color: {PRIMARY_BLUE};
-            border-color: {PRIMARY_BLUE};
-            color: {DARK_BG};
+            background-color: {colors['ACCENT']};
+            border-color: {colors['ACCENT']};
+            color: {colors['BG']}; /* Dark text on bright button */
         }}
         .stButton>button:hover {{
             background-color: #008CBA; 
@@ -164,6 +181,11 @@ def apply_theme():
             opacity: 0.6;
             text-align: center;
             margin-top: 30px;
+        }}
+        
+        /* Specific fix for Altair tooltips/labels in Streamlit */
+        .stPlotlyChart, .stAltairChart {{
+            color: {colors['TEXT']} !important;
         }}
     </style>
     """, unsafe_allow_html=True)
@@ -239,7 +261,9 @@ def render_gauge(percent: float, label: str):
     """Draw a clean semicircle gauge using inline SVG for confidence visualization."""
     p = max(0, min(100, percent))
     angle = -90 + (p * 180.0 / 100.0)
-    gauge_color = "#FF4500" if p > 50 else "#00FF7F"
+    # Use theme colors
+    colors = get_theme_colors(st.session_state.theme)
+    gauge_color = colors['FAILURE'] if p > 50 else colors['SUCCESS']
     
     st.markdown(f"""
     <div class='gauge-wrapper'>
@@ -253,7 +277,7 @@ def render_gauge(percent: float, label: str):
         <line x1="50" y1="50" x2="{50 + 38 * np.cos(np.radians(angle))}" y2="{50 + 38 * np.sin(np.radians(angle))}"
               stroke="{gauge_color}" stroke-width="2"/>
         <!-- Text Label -->
-        <text x="50" y="58" text-anchor="middle" font-size="8" fill="currentColor">{label}: {p:.1f}%</text>
+        <text x="50" y="58" text-anchor="middle" font-size="8" fill="{colors['TEXT']}">{label}: {p:.1f}%</text>
       </svg>
     </div>
     """, unsafe_allow_html=True)
@@ -648,6 +672,22 @@ with tab_analysis:
         df['Confidence_Value'] = df['Confidence'].str.replace('%', '').astype(float)
         df['Index'] = range(len(df)) # Used for Line Chart
 
+        # Get dynamic colors for Altair charts
+        TEXT_COLOR = st.session_state.text_color
+        CARD_BG_COLOR = st.session_state.card_bg_color
+        COLORS = get_theme_colors(st.session_state.theme)
+        
+        # Altair Theme Configuration (to ensure chart elements match Streamlit theme)
+        theme_config = {
+            "config": {
+                "background": CARD_BG_COLOR,
+                "title": {"color": TEXT_COLOR},
+                "axis": {"labelColor": TEXT_COLOR, "titleColor": TEXT_COLOR},
+                "header": {"titleColor": TEXT_COLOR, "labelColor": TEXT_COLOR},
+                "legend": {"titleColor": TEXT_COLOR, "labelColor": TEXT_COLOR},
+            }
+        }
+        
         # 1. Bar Chart (Total Counts)
         st.subheader("1. Diagnosis Frequency (Bar Chart)")
         counts_df = df["Result"].value_counts().reset_index()
@@ -656,56 +696,54 @@ with tab_analysis:
         chart_bar = alt.Chart(counts_df).mark_bar().encode(
             x=alt.X('Result', axis=None),
             y=alt.Y('Count', title='Number of Cases'),
-            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=['#00FF7F', '#FF4500'])),
+            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[COLORS['SUCCESS'], COLORS['FAILURE']])),
             tooltip=['Result', 'Count']
         ).properties(
             title='Total Case Counts'
-        ).interactive()
+        ).configure_view(
+            strokeOpacity=0
+        ).configure(**theme_config).interactive()
         st.altair_chart(chart_bar, use_container_width=True)
 
         st.markdown("---")
 
-        # 2. Pie Chart (3D / Donut Chart for Breakdown)
+        # 2. Pie Chart (Donut Chart for Breakdown)
         st.subheader("2. Diagnostic Breakdown (Donut Chart)")
-        # Calculate percentages
         counts_df['Percentage'] = (counts_df['Count'] / counts_df['Count'].sum()) * 100
         
-        # Base chart for Pie/Donut
         chart_pie = alt.Chart(counts_df).encode(
             theta=alt.Theta("Count", stack=True),
-            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=['#00FF7F', '#FF4500'])),
+            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[COLORS['SUCCESS'], COLORS['FAILURE']])),
             order=alt.Order('Percentage', sort='descending')
-        ).properties(
-             title='Percentage Breakdown of Results'
         )
 
-        # Draw the arc (3D effect achieved with dark stroke and labels)
-        chart_arc = chart_pie.mark_arc(outerRadius=120, innerRadius=80, stroke="#161B22", strokeWidth=2).encode(
+        chart_arc = chart_pie.mark_arc(outerRadius=120, innerRadius=80, stroke=CARD_BG_COLOR, strokeWidth=2).encode(
              tooltip=['Result', 'Count', alt.Tooltip('Percentage', format='.1f')]
         )
 
-        # Add text labels
+        # Add text labels (FIXED: Using the dynamically retrieved TEXT_COLOR)
         text = chart_pie.mark_text(radius=140).encode(
             text=alt.Text('Percentage', format='.1f'),
-            color=alt.value(TEXT_COLOR) # Set label color based on theme
+            color=alt.value(TEXT_COLOR) 
         )
 
-        st.altair_chart(chart_arc + text, use_container_width=True)
+        st.altair_chart((chart_arc + text).configure(**theme_config), use_container_width=True)
 
         st.markdown("---")
 
         # 3. Line Chart (Confidence Trend over Time)
         st.subheader("3. Confidence Trend Over Time")
         
-        # Color based on the classification result
         chart_line = alt.Chart(df).mark_line(point=True).encode(
             x=alt.X('Index', title='Prediction Number', axis=alt.Axis(format='d')),
             y=alt.Y('Confidence_Value', title='Confidence (%)'),
-            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=['#00FF7F', '#FF4500'])),
+            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=[COLORS['SUCCESS'], COLORS['FAILURE']])),
             tooltip=['Image', 'Result', 'Confidence']
         ).properties(
             title='Confidence Level by Prediction Order'
-        ).interactive()
+        ).configure_view(
+            strokeOpacity=0
+        ).configure(**theme_config).interactive()
         st.altair_chart(chart_line, use_container_width=True)
 
 
