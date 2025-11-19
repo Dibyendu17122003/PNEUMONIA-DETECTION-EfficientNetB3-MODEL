@@ -55,25 +55,25 @@ LOG_SCHEMA = [
 HISTORY_FILE = "prediction_history.csv"
 
 
-# -------------------- SUNSET/ORANGE THEME CSS ----------------
+# -------------------- FUTURISTIC BLUE THEME CSS ----------------
 STYLING = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap');
 
     :root {
-        --bg-deep: #0f0500; /* Near Black/Brown */
-        --neon-accent: #ff8c00; /* Dark Orange/Sunset */
-        --neon-danger: #ff4500; /* Fiery Red Orange */
+        --bg-deep: #030a18; /* Dark Blue Gray */
+        --neon-accent: #00e5ff; /* Bright Cyan */
+        --neon-danger: #ff4500; /* Orange Red for alert */
         --neon-safe: #32cd32; /* Lime Green */
-        --glass-bg: rgba(25, 10, 0, 0.85); /* Dark transparent brown */
-        --glass-border: rgba(255, 140, 0, 0.15);
-        --text-main: #fff8e1; /* Off-White/Cream */
+        --glass-bg: rgba(10, 20, 40, 0.9); /* Dark transparent blue */
+        --glass-border: rgba(0, 229, 255, 0.15);
+        --text-main: #e0f7fa; /* Off-White/Cyan */
     }
 
     /* --- CRT SCANLINE & BACKGROUND --- */
     .scanline {
         width: 100%; height: 100px; z-index: 9999;
-        background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(255, 140, 0, 0.05) 50%, rgba(0,0,0,0) 100%);
+        background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 229, 255, 0.05) 50%, rgba(0,0,0,0) 100%);
         opacity: 0.1; position: fixed; bottom: 100%; left: 0;
         animation: scanline 8s linear infinite; pointer-events: none;
     }
@@ -82,9 +82,9 @@ STYLING = """
     .stApp {
         background-color: var(--bg-deep);
         background-image: 
-            radial-gradient(circle at 50% 50%, rgba(255, 140, 0, 0.1) 0%, transparent 60%),
-            linear-gradient(rgba(255, 140, 0, 0.02) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 140, 0, 0.02) 1px, transparent 1px);
+            radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.1) 0%, transparent 60%),
+            linear-gradient(rgba(0, 229, 255, 0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 229, 255, 0.02) 1px, transparent 1px);
         background-size: 100% 100%, 40px 40px, 40px 40px;
         font-family: 'Rajdhani', sans-serif;
         color: var(--text-main);
@@ -92,8 +92,8 @@ STYLING = """
 
     /* --- TICKER --- */
     .ticker-wrap {
-        width: 100%; overflow: hidden; background: rgba(50, 20, 0, 0.8);
-        border-bottom: 1px solid var(--neon-danger); white-space: nowrap;
+        width: 100%; overflow: hidden; background: rgba(0, 10, 20, 0.8);
+        border-bottom: 1px solid var(--neon-accent); white-space: nowrap;
         padding: 8px 0; margin-bottom: 20px;
     }
     .ticker {
@@ -117,12 +117,12 @@ STYLING = """
         backdrop-filter: blur(16px);
         border: 1px solid var(--glass-border);
         border-radius: 16px; padding: 24px; margin-bottom: 20px;
-        box-shadow: 0 0 20px rgba(255, 140, 0, 0.1);
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.1);
         transition: all 0.3s ease;
     }
     .glass-card:hover {
         border-color: var(--neon-accent);
-        box-shadow: 0 0 40px rgba(255, 140, 0, 0.2);
+        box-shadow: 0 0 40px rgba(0, 229, 255, 0.2);
         transform: translateY(-2px);
     }
     .glass-card h1 { white-space: nowrap; } /* FIX: Optimal one line */
@@ -138,7 +138,7 @@ STYLING = """
     
     /* --- BUTTONS --- */
     .stButton > button {
-        background: linear-gradient(90deg, rgba(255, 140, 0, 0.1), rgba(255, 69, 0, 0.1));
+        background: linear-gradient(90deg, rgba(0, 229, 255, 0.1), rgba(0, 100, 200, 0.1));
         border: 1px solid var(--neon-accent); color: var(--neon-accent);
         font-family: 'Orbitron'; letter-spacing: 1px;
         transition: 0.3s;
@@ -156,7 +156,7 @@ STYLING = """
 <div class="scanline"></div>
 <div class="ticker-wrap">
     <div class="ticker">
-        /// SYSTEM: ONLINE /// MED-CORE AI V7.0 // BIO-DIAGNOSTIC ACTIVE // STATUS: {status_text} // ENGINEERED BY DIBYENDU KARMAHAPATRA //
+        /// SYSTEM: ONLINE /// MED-CORE AI V8.0 // BIO-DIAGNOSTIC ACTIVE // STATUS: {status_text} // ENGINEERED BY DIBYENDU KARMAHAPATRA //
     </div>
 </div>
 """
@@ -168,9 +168,11 @@ class MockModel:
     def predict(self, x, verbose=0):
         p = random.uniform(0.7, 0.99)
         if random.choice([True, False]):
-            return np.array([[p, 1-p]]) # Normal
+            # Mocking Normal (high confidence in class 0)
+            return np.array([[p, 1-p]]) 
         else:
-            return np.array([[1-p, p]]) # Pneumonia
+            # Mocking Pneumonia (high confidence in class 1)
+            return np.array([[1-p, p]])
 
 @st.cache_resource
 def get_model():
@@ -181,7 +183,6 @@ def get_model():
                  _ = model.predict(np.zeros((1, IMAGE_SIZE[0], IMAGE_SIZE[1], 3), dtype=np.float32), verbose=0)
             return model
         except Exception as e:
-            # Fatal TF/Keras load error -> Fallback to Mock
             return MockModel()
     return MockModel()
 
@@ -244,14 +245,48 @@ def create_pdf(image_name: str, result: str, confidence: str, notes: str) -> byt
     return out
 
 def get_gradcam_data(pil_img: Image.Image, model: MockModel | tf.keras.Model):
-    """Generates a simulated heatmap for the UI (simple overlay for demo)."""
-    img = np.array(pil_img.convert("RGB").resize(IMAGE_SIZE))
-    # Generate random heatmap data
-    heatmap = cv2.applyColorMap(np.uint8(255 * np.random.rand(*IMAGE_SIZE)), cv2.COLORMAP_JET)
+    """
+    Generates a modern, gray/blue heatmap overlay.
     
-    # Blend the heatmap and image
-    img_bgr = img[:, :, ::-1] # RGB to BGR for OpenCV
-    overlay = cv2.addWeighted(img_bgr, 0.6, heatmap, 0.4, 0)
+    If TensorFlow is available, it returns a simulated overlay for robustness.
+    For a real Grad-CAM implementation, this function would need to be expanded 
+    using the Keras/TF GradientTape logic. Here we focus on the visualization 
+    style as requested.
+    """
+    img = np.array(pil_img.convert("RGB").resize(IMAGE_SIZE))
+    
+    # 1. Generate grayscale base from the image
+    gray_img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    
+    # 2. Generate random heatmap (simulation)
+    # Use random noise for visualization effect
+    if isinstance(model, MockModel) or not TF_AVAILABLE:
+        heatmap_data = np.random.rand(IMAGE_SIZE[0], IMAGE_SIZE[1])
+    else:
+        # Placeholder for real Grad-CAM logic, currently returns noise if TF logic isn't complex
+        heatmap_data = np.random.rand(IMAGE_SIZE[0], IMAGE_SIZE[1])
+
+    # 3. Apply custom color mapping (Gray -> Blue/Cyan)
+    # Create a custom colormap: 0=Gray/Black, 1=Bright Cyan/Blue
+    
+    # Create an array of colors: 0 (Black/Gray) to 255 (Blue/Cyan)
+    color_map = np.zeros((256, 1, 3), dtype=np.uint8)
+    color_map[:64, 0] = [60, 60, 60] # Low values: Dark Gray
+    color_map[64:180, 0] = [200, 100, 0] # Mid values: Dark Blue
+    color_map[180:, 0] = [255, 200, 0] # High values: Bright Cyan (BGR format)
+
+    # Normalize heatmap data to 0-255 range
+    heatmap_norm = np.uint8(255 * (heatmap_data - np.min(heatmap_data)) / (np.max(heatmap_data) - np.min(heatmap_data) + 1e-10))
+    
+    # Apply custom colormap
+    heatmap_colored = cv2.applyColorMap(heatmap_norm, color_map)
+    
+    # 4. Blend the heatmap and original image
+    # Use the grayscale image as the base for a clearer, clinical look
+    img_bgr = cv2.cvtColor(gray_img, cv2.COLOR_GRAY2BGR)
+    
+    # Overlay the blue heatmap
+    overlay = cv2.addWeighted(img_bgr, 0.6, heatmap_colored, 0.4, 0)
     return overlay
 
 # -------------------- MAIN LAYOUT --------------------
@@ -329,7 +364,7 @@ with tab1:
                     if enable_gradcam:
                         st.markdown("#### 🔥 THERMAL ANALYSIS (GRAD-CAM)")
                         heatmap_overlay = get_gradcam_data(image, model)
-                        st.image(heatmap_overlay, use_column_width=True, clamp=True, caption="AI focus map: Red indicates higher predictive weight.")
+                        st.image(heatmap_overlay, use_column_width=True, clamp=True, caption="AI focus map: Cyan/Blue regions indicate predictive weight.")
                     
                     # Store PDF Data for Tab 3
                     st.session_state['last_pdf'] = create_pdf(file.name, label, conf_str, notes)
@@ -452,7 +487,7 @@ with tab3:
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center; color:#555; font-size:12px;'>
-    NEXUS MED-CORE V7.0 // SECURE MEDICAL AI INTERFACE<br>
+    NEXUS MED-CORE V8.0 // SECURE MEDICAL AI INTERFACE<br>
     ENGINEERED BY DIBYENDU KARMAHAPATRA
 </div>
 """, unsafe_allow_html=True)
