@@ -10,6 +10,7 @@ import pandas as pd
 from PIL import Image
 
 import streamlit as st
+import altair as alt # Used for advanced charting
 
 # TensorFlow / Keras (Assuming these are installed in the environment)
 import tensorflow as tf
@@ -25,7 +26,6 @@ from email.mime.text import MIMEText
 from email import encoders
 
 # --- Define Base Directory for Robust Path Handling ---
-# This ensures MODEL_PATH is always correct, regardless of the deployment environment's CWD.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
 
 # -------------------- PAGE CONFIG --------------------
@@ -62,10 +62,17 @@ if "batch_results" not in st.session_state:
 # -------------------- THEME / STYLE (Modern Blue/Grey) ------------------
 def apply_theme():
     """Applies modern, responsive CSS styling for Blue/Grey theme."""
-    DARK_BG = "#0D1117"  # GitHub dark mode background
-    LIGHT_BG = "#161B22" # Card background (Subtle Grey-Blue)
-    PRIMARY_BLUE = "#58A6FF" # GitHub primary blue for accent
-    TEXT_COLOR = "#C9D1D9" # Light grey text
+    # Define colors based on the current theme state
+    if st.session_state.theme == "dark":
+        DARK_BG = "#0D1117"
+        LIGHT_BG = "#161B22"
+        PRIMARY_BLUE = "#58A6FF"
+        TEXT_COLOR = "#C9D1D9"
+    else: # Light mode style (less detailed, but functional)
+        DARK_BG = "#FFFFFF"
+        LIGHT_BG = "#F0F2F6"
+        PRIMARY_BLUE = "#007BFF"
+        TEXT_COLOR = "#2C3E50"
 
     st.markdown(f"""
     <style>
@@ -78,7 +85,7 @@ def apply_theme():
             color: {TEXT_COLOR};
         }}
         
-        /* Main Header Neon/Glow Effect */
+        /* Main Header Neon/Glow Effect (Dark mode only) */
         h1.main-header {{
              text-shadow: 0 0 8px {PRIMARY_BLUE}, 0 0 12px rgba(88, 166, 255, 0.4);
              text-align: center;
@@ -95,7 +102,7 @@ def apply_theme():
             margin-bottom: 20px;
         }}
         
-        /* Result Banners - Use Streamlit's alert styling with custom border */
+        /* Result Banners */
         .result-banner {{
             padding: 15px;
             border-radius: 8px;
@@ -144,7 +151,7 @@ def apply_theme():
         .stButton>button {{
             background-color: {PRIMARY_BLUE};
             border-color: {PRIMARY_BLUE};
-            color: {DARK_BG}; /* Dark text on bright button */
+            color: {DARK_BG};
         }}
         .stButton>button:hover {{
             background-color: #008CBA; 
@@ -167,7 +174,7 @@ apply_theme()
 with st.sidebar:
     st.markdown("## ⚙ Settings & Configuration")
     
-    # --- FIX APPLIED HERE: st.experimental_rerun() changed to st.rerun() ---
+    # --- FIXED THEME TOGGLE: Uses st.rerun() ---
     if st.button("🎨 Toggle Theme (Light/Dark)"):
         st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
         st.rerun() 
@@ -175,7 +182,6 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Model Behavior")
     
-    # NEW FEATURE: Adjustable threshold
     prediction_threshold = st.slider(
         "Pneumonia Classification Threshold (%)",
         min_value=50, max_value=99, value=80, step=1,
@@ -209,6 +215,7 @@ def load_model_cached():
     model = load_model(MODEL_PATH, compile=False) 
     
     try:
+        # Dummy prediction for warm-up
         _ = model.predict(np.zeros((1, IMAGE_SIZE[0], IMAGE_SIZE[1], 3), dtype=np.float32), verbose=0)
     except Exception as e:
          st.error(f"Model warm-up failed. Check model file integrity. Error: {e}")
@@ -395,13 +402,12 @@ st.markdown("<p style='text-align:center;'>EfficientNet-based X-ray Analysis for
 model = load_model_cached()
 
 # --- Tabs for Clean Structure ---
-tab_single, tab_batch, tab_history = st.tabs(["📊 Single Prediction", "📦 Batch Processing", "📜 History & Analytics"])
+tab_single, tab_batch, tab_history, tab_analysis = st.tabs(["📊 Single Prediction", "📦 Batch Processing", "📜 History Log", "📈 Analysis & Trends"])
 
 # -------------------- TAB 1: SINGLE PREDICTION --------------------
 with tab_single:
     st.markdown("### Upload and Analyze a Chest X-ray")
     
-    # Use fluid columns for responsiveness (adjusts automatically on mobile)
     col_upload, col_result = st.columns([1.5, 2], gap="large")
 
     with col_upload:
@@ -508,7 +514,8 @@ with tab_single:
                             "Image": uploaded.name,
                             "Result": label,
                             "Confidence": f"{conf:.2f}%",
-                            "Time": time.strftime("%Y-%m-%d %H:%M:%S")
+                            "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "Confidence_Value": conf # Store numerical value for analysis
                         })
                         
                         # 5. PDF Report Generation
@@ -577,37 +584,24 @@ with tab_batch:
             use_container_width=True
         )
 
-# -------------------- TAB 3: HISTORY & ANALYTICS --------------------
+# -------------------- TAB 3: HISTORY LOG --------------------
 with tab_history:
-    st.markdown("### 📜 Prediction History")
+    st.markdown("### 📜 Session Prediction Log")
     
-    col_hist, col_dash = st.columns([2, 1], gap="large")
+    if st.session_state.history:
+        df = pd.DataFrame(st.session_state.history)
+        
+        # Format the display table nicely (dropping the internal numerical column)
+        df_display = df.drop(columns=['Confidence_Value'], errors='ignore')
+        df_display.insert(0, 'ID', range(1, 1 + len(df_display)))
+        
+        st.dataframe(df_display, use_container_width=True, height=350)
 
-    with col_hist:
-        if st.session_state.history:
-            df = pd.DataFrame(st.session_state.history)
-            st.dataframe(df, use_container_width=True, height=300)
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇ Download History Log (CSV)", data=csv_bytes, file_name="prediction_history.csv", mime="text/csv", use_container_width=True, type="secondary")
+    else:
+        st.info("No predictions recorded in this session yet. Run a single prediction or a batch to start logging.")
 
-            csv_bytes = df.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇ Download History Log (CSV)", data=csv_bytes, file_name="prediction_history.csv", mime="text/csv", use_container_width=True, type="secondary")
-        else:
-            st.info("No predictions recorded in this session yet.")
-    
-    with col_dash:
-        st.markdown("### 📊 Session Analytics")
-        if st.session_state.history:
-            df = pd.DataFrame(st.session_state.history)
-            counts = df["Result"].value_counts().reindex(CLASS_NAMES, fill_value=0)
-            
-            st.bar_chart(counts, use_container_width=True)
-            
-            df['Confidence_Val'] = df['Confidence'].str.replace('%', '').astype(float)
-            avg_conf = df['Confidence_Val'].mean()
-            
-            st.metric(label="Average Confidence", value=f"{avg_conf:.2f}%")
-        else:
-            st.write("Run predictions to populate the dashboard.")
-            
     st.markdown("---")
 
     # --- Email Section (Uses last generated PDF) ---
@@ -642,6 +636,78 @@ with tab_history:
             )
             if success:
                 st.success(f"Report successfully emailed to {recipient}! ✅")
+
+# -------------------- TAB 4: ANALYSIS & TRENDS --------------------
+with tab_analysis:
+    st.markdown("### 📈 Prediction Analysis and Visualization")
+    
+    if not st.session_state.history:
+        st.info("Run predictions in the 'Single Prediction' tab to generate data for analysis.")
+    else:
+        df = pd.DataFrame(st.session_state.history)
+        df['Confidence_Value'] = df['Confidence'].str.replace('%', '').astype(float)
+        df['Index'] = range(len(df)) # Used for Line Chart
+
+        # 1. Bar Chart (Total Counts)
+        st.subheader("1. Diagnosis Frequency (Bar Chart)")
+        counts_df = df["Result"].value_counts().reset_index()
+        counts_df.columns = ['Result', 'Count']
+        
+        chart_bar = alt.Chart(counts_df).mark_bar().encode(
+            x=alt.X('Result', axis=None),
+            y=alt.Y('Count', title='Number of Cases'),
+            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=['#00FF7F', '#FF4500'])),
+            tooltip=['Result', 'Count']
+        ).properties(
+            title='Total Case Counts'
+        ).interactive()
+        st.altair_chart(chart_bar, use_container_width=True)
+
+        st.markdown("---")
+
+        # 2. Pie Chart (3D / Donut Chart for Breakdown)
+        st.subheader("2. Diagnostic Breakdown (Donut Chart)")
+        # Calculate percentages
+        counts_df['Percentage'] = (counts_df['Count'] / counts_df['Count'].sum()) * 100
+        
+        # Base chart for Pie/Donut
+        chart_pie = alt.Chart(counts_df).encode(
+            theta=alt.Theta("Count", stack=True),
+            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=['#00FF7F', '#FF4500'])),
+            order=alt.Order('Percentage', sort='descending')
+        ).properties(
+             title='Percentage Breakdown of Results'
+        )
+
+        # Draw the arc (3D effect achieved with dark stroke and labels)
+        chart_arc = chart_pie.mark_arc(outerRadius=120, innerRadius=80, stroke="#161B22", strokeWidth=2).encode(
+             tooltip=['Result', 'Count', alt.Tooltip('Percentage', format='.1f')]
+        )
+
+        # Add text labels
+        text = chart_pie.mark_text(radius=140).encode(
+            text=alt.Text('Percentage', format='.1f'),
+            color=alt.value(TEXT_COLOR) # Set label color based on theme
+        )
+
+        st.altair_chart(chart_arc + text, use_container_width=True)
+
+        st.markdown("---")
+
+        # 3. Line Chart (Confidence Trend over Time)
+        st.subheader("3. Confidence Trend Over Time")
+        
+        # Color based on the classification result
+        chart_line = alt.Chart(df).mark_line(point=True).encode(
+            x=alt.X('Index', title='Prediction Number', axis=alt.Axis(format='d')),
+            y=alt.Y('Confidence_Value', title='Confidence (%)'),
+            color=alt.Color('Result', scale=alt.Scale(domain=['Normal', 'Pneumonia'], range=['#00FF7F', '#FF4500'])),
+            tooltip=['Image', 'Result', 'Confidence']
+        ).properties(
+            title='Confidence Level by Prediction Order'
+        ).interactive()
+        st.altair_chart(chart_line, use_container_width=True)
+
 
 # -------------------- FOOTER ----------------------
 st.markdown("<div class='disclaimer'>⚠ This tool is for educational/research use only and is not a certified medical device. Always consult a qualified clinician for diagnosis and treatment.</div>", unsafe_allow_html=True)
